@@ -13,7 +13,123 @@ import { avecCache, avecServerInfo, complet, type PorteeCache } from "./meta";
 
 export interface IdentiteServeur {
   name: string;
+  title?: string;
   version: string;
+}
+
+export const SERVER_CARD_SCHEMA =
+  "https://static.modelcontextprotocol.io/schemas/v1/server-card.schema.json";
+
+export const SERVER_CARD_CONTENT_TYPE = "application/mcp-server-card+json; charset=utf-8";
+
+export interface EnteteCarteServeur {
+  name: string;
+  description: string;
+  isRequired: boolean;
+  isSecret: boolean;
+}
+
+export interface PointDistantCarteServeur {
+  type: "streamable-http";
+  url: string;
+  supportedProtocolVersions: string[];
+  headers: EnteteCarteServeur[];
+}
+
+export interface OptionsCarteServeur {
+  /** Identifiant canonique de la fiche (`ca.poirierlavoie.<depot>/<nom>`). */
+  name: string;
+  title: string;
+  version: string;
+  description: string;
+  websiteUrl: string;
+  repositoryUrl: string;
+  remoteUrl: string;
+  supportedProtocolVersions: readonly string[];
+  /** Description de l'en-tête `Authorization` annoncée aux catalogues. */
+  authDescription?: string;
+}
+
+export interface CarteServeur {
+  $schema: string;
+  name: string;
+  title: string;
+  version: string;
+  description: string;
+  websiteUrl: string;
+  repository: { url: string; source: "github" };
+  remotes: PointDistantCarteServeur[];
+}
+
+/** Construit une fiche SEP-2127 (`/mcp/server-card`), sans accès aux secrets. */
+export function construireCarteServeur(o: OptionsCarteServeur): CarteServeur {
+  return {
+    $schema: SERVER_CARD_SCHEMA,
+    name: o.name,
+    title: o.title,
+    version: o.version,
+    description: o.description,
+    websiteUrl: o.websiteUrl,
+    repository: {
+      url: o.repositoryUrl,
+      source: "github",
+    },
+    remotes: [
+      {
+        type: "streamable-http",
+        url: o.remoteUrl,
+        supportedProtocolVersions: [...o.supportedProtocolVersions],
+        headers: [
+          {
+            name: "Authorization",
+            description:
+              o.authDescription ?? "Jeton ou secret partagé de l'instance (« Bearer <jeton> »).",
+            isRequired: true,
+            isSecret: true,
+          },
+        ],
+      },
+    ],
+  };
+}
+
+/** Sert une réponse HTTP conforme à SEP-2127 pour `GET`, `HEAD`, `OPTIONS` et `405` ailleurs. */
+export function repondreCarteServeur(
+  method: string,
+  carte: CarteServeur | Record<string, unknown>,
+  options: { cacheMaxAge?: number } = {},
+): Response {
+  if (method === "OPTIONS") {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+        "Access-Control-Allow-Headers": "Accept, Content-Type",
+        "Access-Control-Max-Age": "86400",
+      },
+    });
+  }
+  if (method !== "GET" && method !== "HEAD") {
+    return new Response(JSON.stringify({ error: "method_not_allowed" }), {
+      status: 405,
+      headers: {
+        "Content-Type": "application/json; charset=utf-8",
+        Allow: "GET, HEAD, OPTIONS",
+        "Access-Control-Allow-Origin": "*",
+      },
+    });
+  }
+  const maxAge = options.cacheMaxAge ?? 600;
+  const headers: Record<string, string> = {
+    "Content-Type": SERVER_CARD_CONTENT_TYPE,
+    "Cache-Control": `public, max-age=${maxAge}`,
+    "X-Content-Type-Options": "nosniff",
+    "Access-Control-Allow-Origin": "*",
+  };
+  return method === "HEAD"
+    ? new Response(null, { status: 200, headers })
+    : new Response(JSON.stringify(carte), { status: 200, headers });
 }
 
 export interface OptionsDecouverte {

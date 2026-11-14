@@ -1,6 +1,6 @@
 {
   "name": "@poirierlavoie/socle-juridique",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": true,
   "description": "Socle commun des connecteurs juridiques — AUTHENTIFICATION et le transport MCP qui la porte. Dépendance de DÉVELOPPEMENT, empaquetée au déploiement : jamais une dépendance d'exécution (S2).",
   "license": "SEE LICENSE IN LICENSE",
@@ -24,10 +24,15 @@
     "test:watch": "vitest"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.3.14",
-    "@cloudflare/vitest-pool-workers": "^0.18.7",
+    "@biomejs/biome": "^2.6.7",
+    "@cloudflare/vitest-pool-workers": "^0.23.0",
     "@cloudflare/workers-types": "^4.20260701.0",
     "typescript": "^5.9.2",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.12"
+  },
+  "overrides": {
+    "sharp": "^0.35.5",
+    "undici": "^7.30.2",
+    "zod": "^4.6.7"
   }
 }

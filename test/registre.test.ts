@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   type Annotations,
+  appelerOutil,
+  type DescripteurOutil,
   listToolDescriptors,
   type Registre,
   type ToolDescriptor,
@@ -86,5 +88,120 @@ describe("listToolDescriptors", () => {
 
   it("un registre vide rend un tableau vide", () => {
     expect(listToolDescriptors({} as Registre<CtxFactice>)).toEqual([]);
+  });
+});
+
+describe("execution optionnel et DescripteurOutil public", () => {
+  it("émet execution comme sixième clef seulement lorsqu'il est défini", () => {
+    const publicOnly: Record<string, DescripteurOutil> = {
+      avec_exec: {
+        title: "Avec tâche",
+        description: "Test",
+        inputSchema: { type: "object" },
+        annotations: { readOnlyHint: true },
+        execution: { taskSupport: "forbidden" },
+      },
+      sans_exec: {
+        title: "Sans tâche",
+        description: "Test",
+        inputSchema: { type: "object" },
+        annotations: { readOnlyHint: true },
+      },
+    };
+    const res = listToolDescriptors(publicOnly);
+    expect(Object.keys(res[0]!)).toEqual([
+      "name",
+      "title",
+      "description",
+      "inputSchema",
+      "annotations",
+      "execution",
+    ]);
+    expect(res[0]!.execution).toEqual({ taskSupport: "forbidden" });
+    expect(Object.keys(res[1]!)).toEqual([
+      "name",
+      "title",
+      "description",
+      "inputSchema",
+      "annotations",
+    ]);
+  });
+});
+
+describe("appelerOutil", () => {
+  const registre: Registre<{ coef: number }> = {
+    echo: {
+      title: "Écho",
+      description: "Renvoie q",
+      inputSchema: {
+        type: "object",
+        properties: { q: { type: "string", minLength: 1 } },
+        required: ["q"],
+        additionalProperties: false,
+      },
+      annotations: { readOnlyHint: true },
+      handler: async (args, ctx) => ok(`${String(args.q)}:${ctx.coef}`),
+    },
+    explose: {
+      title: "Explose",
+      description: "Lève une erreur interne",
+      inputSchema: { type: "object" },
+      annotations: { readOnlyHint: true },
+      handler: async () => {
+        throw new Error("boom secret");
+      },
+    },
+  };
+
+  it("rejette les clefs de prototype comme outil inconnu", async () => {
+    for (const nom of ["toString", "constructor", "__proto__", "valueOf"]) {
+      const r = await appelerOutil(registre, nom, {}, { coef: 1 });
+      expect(r.isError).toBe(true);
+      expect(r.content[0]!.text).toContain("Outil inconnu");
+    }
+  });
+
+  it("liste les outils disponibles lorsque listerDisponiblesSiInconnu est actif", async () => {
+    const r = await appelerOutil(
+      registre,
+      "absent",
+      {},
+      { coef: 1 },
+      { listerDisponiblesSiInconnu: true },
+    );
+    expect(r.isError).toBe(true);
+    expect(r.content[0]!.text).toContain("echo, explose");
+  });
+
+  it("rejette des arguments non-objet sans atteindre le gestionnaire", async () => {
+    const r = await appelerOutil(registre, "echo", ["pas", "un", "objet"], { coef: 1 });
+    expect(r.isError).toBe(true);
+    expect(r.content[0]!.text).toContain("objet");
+  });
+
+  it("applique normaliser avant la validation du schéma", async () => {
+    const r = await appelerOutil(
+      registre,
+      "echo",
+      { q: 123 },
+      { coef: 2 },
+      { normaliser: (_nom, args) => ({ ...args, q: String(args.q) }) },
+    );
+    expect(r.isError).toBe(false);
+    expect(r.content[0]!.text).toBe("123:2");
+  });
+
+  it("intercepte une exception interne et appelle surErreur sans fuite", async () => {
+    const captures: string[] = [];
+    const r = await appelerOutil(
+      registre,
+      "explose",
+      {},
+      { coef: 1 },
+      { surErreur: (nom) => captures.push(nom) },
+    );
+    expect(r.isError).toBe(true);
+    expect(r.content[0]!.text).not.toContain("boom secret");
+    expect(captures).toEqual(["explose"]);
   });
 });

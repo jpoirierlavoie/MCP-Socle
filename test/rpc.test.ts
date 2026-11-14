@@ -118,12 +118,47 @@ describe("ToolResult élargi (marche 2)", () => {
     expect(r.isError).toBe(false);
   });
 
-  it("une charge VIDE n'est pas émise — `{}` est falsy-équivalent ici", () => {
+  it("une charge VIDE n'est pas émise — `{}` et `undefined` sont exclus", () => {
     // Choix délibéré : un objet vide n'apporte rien et ferait croire à un contrat.
     expect("structuredContent" in ok("t", undefined)).toBe(false);
+    expect("structuredContent" in ok("t", {})).toBe(false);
   });
 
   it("err() n'a jamais de charge structurée", () => {
     expect("structuredContent" in err("raté")).toBe(false);
+  });
+});
+
+describe("parseMessage — propagation de id et rejet des params tableaux", () => {
+  it("rejette un `params` tableau et préserve l'id valide", () => {
+    try {
+      parseMessage('{"jsonrpc":"2.0","id":7,"method":"ping","params":[]}');
+      expect.unreachable();
+    } catch (e) {
+      expect(e).toBeInstanceOf(JsonRpcError);
+      const je = e as JsonRpcError;
+      expect(je.code).toBe(INVALID_REQUEST);
+      expect(je.requestId).toBe(7);
+    }
+  });
+
+  it("propage un `id` valide lorsque `jsonrpc` ou `method` est fautif", () => {
+    try {
+      parseMessage('{"jsonrpc":"1.0","id":"req-1","method":"ping"}');
+      expect.unreachable();
+    } catch (e) {
+      const je = e as JsonRpcError;
+      expect(je.code).toBe(INVALID_REQUEST);
+      expect(je.requestId).toBe("req-1");
+    }
+
+    try {
+      parseMessage('{"jsonrpc":"2.0","id":99,"method":""}');
+      expect.unreachable();
+    } catch (e) {
+      const je = e as JsonRpcError;
+      expect(je.code).toBe(INVALID_REQUEST);
+      expect(je.requestId).toBe(99);
+    }
   });
 });

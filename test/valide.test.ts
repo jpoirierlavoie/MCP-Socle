@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { type JsonSchema, TYPES_CONNUS, validateArgs } from "../src/protocole/valide";
+import {
+  type JsonSchema,
+  TYPES_CONNUS,
+  type TypeConnu,
+  validateArgs,
+} from "../src/protocole/valide";
 
 const objet = (props: Record<string, JsonSchema>, required?: string[]): JsonSchema => ({
   type: "object",
@@ -38,12 +43,12 @@ describe("types", () => {
   });
 });
 
-describe("le piège du type inconnu", () => {
-  it("un `type` hors de TYPES_CONNUS DÉSARME la validation, en silence", () => {
-    // Comportement réel, documenté pour qu'il ne soit pas redécouvert : une coquille dans
-    // un schéma ne fait pas échouer la validation — elle la supprime pour ce champ.
-    const s = objet({ n: { type: "integar" } });
-    expect(validateArgs(s, { n: "manifestement pas un entier" })).toEqual([]);
+describe("fermeture par défaut sur type inconnu", () => {
+  it("un `type` hors de TYPES_CONNUS est REFUSÉ (fermé par défaut)", () => {
+    const s = objet({ n: { type: "integar" as unknown as TypeConnu } });
+    const errs = validateArgs(s, { n: "manifestement pas un entier" });
+    expect(errs.length).toBe(1);
+    expect(errs[0]).toContain("integar");
   });
 
   it("TYPES_CONNUS énumère exactement ce que le validateur sait contrôler", () => {
@@ -140,5 +145,39 @@ describe("$schema", () => {
     };
     expect(validateArgs(s, { n: 1 })).toEqual([]);
     expect(validateArgs(s, { n: "x" })).toHaveLength(1);
+  });
+});
+
+describe("sûreté prototype et valeurs undefined", () => {
+  it("ignore les clefs héritées du prototype pour required et additionalProperties", () => {
+    const s: JsonSchema = {
+      type: "object",
+      properties: { q: { type: "string" } },
+      required: ["toString"],
+      additionalProperties: false,
+    };
+    const errs = validateArgs(s, { q: "ok" });
+    expect(errs).toEqual(["« toString » est obligatoire."]);
+
+    const strict: JsonSchema = {
+      type: "object",
+      properties: { q: { type: "string" } },
+      additionalProperties: false,
+    };
+    expect(validateArgs(strict, JSON.parse('{"constructor":"piege"}'))).toEqual([
+      "« constructor » n'est pas un argument reconnu.",
+    ]);
+  });
+
+  it("traite une clef à valeur `undefined` comme absente", () => {
+    const reqSchema = objet({ q: { type: "string" } }, ["q"]);
+    expect(validateArgs(reqSchema, { q: undefined })).toEqual(["« q » est obligatoire."]);
+
+    const optSchema: JsonSchema = {
+      type: "object",
+      properties: { q: { type: "string" } },
+      additionalProperties: false,
+    };
+    expect(validateArgs(optSchema, { q: undefined, autre: undefined })).toEqual([]);
   });
 });

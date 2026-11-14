@@ -8,20 +8,32 @@ import {
 import {
   corsHeaders,
   debitAcceptable,
+  drapeau,
   jsonResponse,
   ORIGINES_PAR_DEFAUT,
   origineAutorisee,
   origineRefusee,
   originesAdmises,
   preflight,
+  reponseSante,
 } from "../src/protocole/http";
 
 const req = (h: Record<string, string> = {}) => new Request("https://x/mcp", { headers: h });
 const ADMISES = originesAdmises();
 
 describe("origines", () => {
-  it("claude.ai et claude.com sont admises par défaut", () => {
-    expect([...ORIGINES_PAR_DEFAUT]).toEqual(["https://claude.ai", "https://claude.com"]);
+  it("claude.ai, claude.com et les origines web Gemini sont admises par défaut", () => {
+    expect([...ORIGINES_PAR_DEFAUT]).toEqual([
+      "https://claude.ai",
+      "https://claude.com",
+      "https://gemini.google.com",
+      "https://aistudio.google.com",
+    ]);
+  });
+
+  it("normalise les barres finales et déduplique les origines supplémentaires", () => {
+    const a = originesAdmises("https://claude.ai/, https://exemple.test///, https://exemple.test/");
+    expect(a).toEqual([...ORIGINES_PAR_DEFAUT, "https://exemple.test"]);
   });
 
   it("la liste supplémentaire AJOUTE, elle ne remplace pas", () => {
@@ -68,6 +80,7 @@ describe("corsHeaders", () => {
     const h = corsHeaders("https://claude.ai")["Access-Control-Expose-Headers"];
     expect(h).toContain("WWW-Authenticate");
     expect(h).toContain("MCP-Protocol-Version");
+    expect(h).toContain("Retry-After");
   });
 });
 
@@ -78,9 +91,16 @@ describe("preflight", () => {
     expect(await r.text()).toBe("");
   });
 
-  it("autorise les en-têtes que 2026-07-28 exige du client", () => {
+  it("autorise les en-têtes que 2026-07-28 et les clients navigateur exigent", () => {
     const h = preflight("https://claude.ai").headers.get("Access-Control-Allow-Headers") ?? "";
-    for (const attendu of ["Authorization", "MCP-Protocol-Version", "Mcp-Method", "Mcp-Name"]) {
+    for (const attendu of [
+      "Authorization",
+      "MCP-Protocol-Version",
+      "Mcp-Method",
+      "Mcp-Name",
+      "Mcp-Session-Id",
+      "Last-Event-ID",
+    ]) {
       expect(h).toContain(attendu);
     }
   });
@@ -162,5 +182,32 @@ describe("jsonResponse", () => {
     const r = jsonResponse({ a: 1 }, 200);
     expect(r.headers.get("Content-Type")).toContain("application/json");
     expect(await r.json()).toEqual({ a: 1 });
+  });
+});
+
+describe("drapeau et reponseSante", () => {
+  it("lit les drapeaux d'environnement avec valeur par défaut explicite", () => {
+    expect(drapeau(undefined, true)).toBe(true);
+    expect(drapeau(undefined, false)).toBe(false);
+    expect(drapeau("", true)).toBe(true);
+    expect(drapeau(" FALSE ", true)).toBe(false);
+    expect(drapeau("0", true)).toBe(true);
+    expect(drapeau("true", false)).toBe(true);
+    expect(drapeau("1", false)).toBe(false);
+    expect(drapeau("quelconque", true)).toBe(true);
+    expect(drapeau("quelconque", false)).toBe(false);
+  });
+
+  it("reponseSante renvoie 200 JSON si actif et 404 sinon", async () => {
+    const ok = reponseSante({ actif: true, commit: "abc1234" });
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toEqual({ status: "ok", commit: "abc1234" });
+
+    const defaut = reponseSante();
+    expect(await defaut.json()).toEqual({ status: "ok", commit: "inconnu" });
+
+    const coupe = reponseSante({ actif: false, commit: "abc1234" });
+    expect(coupe.status).toBe(404);
+    expect(await coupe.text()).toBe("Not found");
   });
 });

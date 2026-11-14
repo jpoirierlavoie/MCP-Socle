@@ -1,15 +1,17 @@
 # `protocole/`
 
-Enveloppe JSON-RPC, transport Streamable HTTP **sans état**, en-têtes, `_meta`,
-négociation de versions, `server/discover`, validation de schémas, registre d'outils.
+Enveloppe JSON-RPC 2.0, transport Streamable HTTP **sans état**, validation d'en-têtes, `_meta`,
+négociation de versions, découverte (`server/discover` et fiche SEP-2127 `/mcp/server-card`),
+validation de schémas fermée par défaut, registre d'outils et répartiteur HTTP unifié.
 
-| Fichier | Marche | Contenu |
-|---|---|---|
-| `rpc.ts` | 1 | enveloppe JSON-RPC 2.0 — repris tel quel de `jurisprudence/src/mcp/rpc.ts` |
-| `valide.ts` | 1 | JSON Schema en sous-ensemble — repris de `jurisprudence/src/mcp/validate.ts` |
-| `registre.ts` | 1 | `ToolDescriptor<TCtx>`, `listToolDescriptors(tools)`. **Pas `callTool`** : la §11 marche 1 le laisse dans chaque dépôt |
-| `versions.ts` | 3 | négociation, `-32022`, pont vers `initialize` (imitation, sans état) |
-| `entetes.ts` | 3 | `MCP-Protocol-Version`, `Mcp-Method`, `Mcp-Name`, `Mcp-Param-*`, sentinelle `=?base64?…?=`, validation en-tête ↔ corps (`-32020`) |
-| `meta.ts` | 3 | `_meta` : `protocolVersion`, `clientInfo`, `clientCapabilities` en entrée ; `serverInfo` en sortie — **dans `_meta`**, non à la racine |
-| `decouverte.ts` | 3 | `server/discover` (**MUST** sous `2026-07-28`), avec `ttlMs` et `cacheScope` |
-| `http.ts` | 1 | CORS, origines admises, préflight, limitation de débit (`debitAcceptable`, qui ÉCHOUE OUVERT), réponses JSON. Employé par les deux connecteurs |
+| Fichier | Contenu |
+|---|---|
+| `rpc.ts` | Enveloppe JSON-RPC 2.0 (`parseMessage` avec propagation de `id` valide et rejet des `params` tableaux, `isNotification`, `ok`, `err`, `JsonRpcError`). |
+| `valide.ts` | Validateur JSON Schema en sous-ensemble : type `TypeConnu`, `typeOk` **fermé par défaut**, sûreté prototype via `Object.hasOwn` et gestion explicite de `undefined`. |
+| `registre.ts` | `DescripteurOutil`, `ToolDescriptor<TCtx>`, `ExecutionOutil`, `listToolDescriptors`, et `appelerOutil` (résolution propre à l'épreuve du prototype, normalisation optionnelle, capture sûre des exceptions). |
+| `versions.ts` | Négociation de version (`negocier`, `-32022`), `estModerne` (`>= 2026-07-28`), `versionAbsenteAdmise`, et pont sans état `negocierInitialize`. |
+| `entetes.ts` | Validation `MCP-Protocol-Version`, `Mcp-Method`, `Mcp-Name`, sentinelle `=?base64?…?=`, `TextDecoder` UTF-8 fatal, contrôle `_meta["io.modelcontextprotocol/protocolVersion"]` non contournable et `exigerVersionMeta`. |
+| `meta.ts` | Extraction durcie de `_meta` (`lireMeta`, `clientLisible`), `avecServerInfo`, indices de cache (`avecCache`, `complet`) et `habillerResultat`. |
+| `decouverte.ts` | `resultatDecouverte` (`server/discover`), et fiche SEP-2127 (`/mcp/server-card`) via `SERVER_CARD_SCHEMA`, `SERVER_CARD_CONTENT_TYPE`, `construireCarteServeur` et `repondreCarteServeur`. |
+| `http.ts` | CORS, `ORIGINES_PAR_DEFAUT` (claude.ai/claude.com + Gemini web), `originesAdmises` normalisé, `preflight`, limitation de débit `debitAcceptable` (échoue ouvert), `drapeau` et `reponseSante`. |
+| `serveur.ts` | Lecteur de corps borné `lireCorpsBorne` (`MAX_OCTETS_CORPS_MCP = 65_536`) et répartiteur HTTP sans état `servirRequeteMcp`. |

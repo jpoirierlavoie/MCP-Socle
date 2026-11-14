@@ -30,7 +30,7 @@ export interface Porte {
   mount: string;
   /**
    * Nom du paramètre de requête portant le jeton. **Omettre pour n'offrir aucun porteur
-   * `?key=`** — `jurisprudence` n'en sert pas. Là où il existe, c'est LA forme employée par
+   * `?key=`** — utile si un connecteur refuse le jeton dans l'URL. Là où il existe, c'est LA forme employée par
    * le connecteur claude.ai en production : les autres n'ont pas survécu à son formulaire
    * (S7, à re-mesurer avant l'ouverture, jamais à présumer).
    */
@@ -85,13 +85,17 @@ export function trimTrailingSlash(pathname: string): string {
 }
 
 /** Jeton porté par l'en-tête `Authorization`, ou `null`. */
+/** Longueur maximale admise pour un jeton ou secret porteur présenté. */
+export const MAX_LONGUEUR_PORTEUR = 512;
+
 export function bearerOf(request: Request): string | null {
   const raw = request.headers.get("Authorization");
-  if (!raw) return null;
+  if (!raw || raw.length > MAX_LONGUEUR_PORTEUR * 2) return null;
   // `\s+` et le drapeau `/i` : le nom du schéma est insensible à la casse (RFC 7235 §2.1),
   // et un `startsWith("Bearer ")` refusait « bearer x » comme « Bearer  x ».
   const m = /^Bearer\s+(.+)$/i.exec(raw.trim());
-  return m?.[1] ? m[1].trim() : null;
+  const jeton = m?.[1]?.trim();
+  return jeton && jeton.length <= MAX_LONGUEUR_PORTEUR ? jeton : null;
 }
 
 /**
@@ -135,7 +139,13 @@ export function porteursPresentes(request: Request, url: URL, porte: Porte): str
   // Dédoublonnage. Sur un jeton base64url sans barre finale — le cas normal — les quatre
   // graphies du chemin se réduisent à UNE. La comparaison n'oppose que des valeurs
   // PRÉSENTÉES entre elles : elle ne touche aucun secret attendu, et n'en divulgue rien.
-  return [...new Set(candidats.filter((c): c is string => c !== null && c.length > 0))];
+  return [
+    ...new Set(
+      candidats.filter(
+        (c): c is string => c !== null && c.length > 0 && c.length <= MAX_LONGUEUR_PORTEUR,
+      ),
+    ),
+  ];
 }
 
 /** Les secrets admis, dans l'ordre. Liste vide ⇒ tout est refusé (fermé par défaut). */

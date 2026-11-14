@@ -17,6 +17,7 @@ export {
   empreinte,
   frapperJeton,
   LONGUEUR_JETON,
+  MAX_LONGUEUR_PORTEUR,
   memeSecret,
   ouvrir,
   type Porte,
@@ -32,26 +33,38 @@ export {
   tropDeRequetes,
 } from "./identite/refus";
 export {
+  type CarteServeur,
+  construireCarteServeur,
+  type EnteteCarteServeur,
   type IdentiteServeur,
+  type OptionsCarteServeur,
   type OptionsDecouverte,
+  type PointDistantCarteServeur,
+  repondreCarteServeur,
   resultatDecouverte,
+  SERVER_CARD_CONTENT_TYPE,
+  SERVER_CARD_SCHEMA,
 } from "./protocole/decouverte";
 export {
   type CorpsAValider,
   decoderSentinelle,
   HEADER_MISMATCH,
+  type OptionsValidationEntetes,
   validerEntetes,
 } from "./protocole/entetes";
 export {
   corsHeaders,
   debitAcceptable,
+  drapeau,
   jsonResponse,
   type Limiteur,
+  type OptionsSante,
   ORIGINES_PAR_DEFAUT,
   origineAutorisee,
   origineRefusee,
   originesAdmises,
   preflight,
+  reponseSante,
 } from "./protocole/http";
 export {
   avecCache,
@@ -63,16 +76,23 @@ export {
   clientLisible,
   complet,
   estCachable,
+  habillerResultat,
   type InfoClient,
   lireMeta,
   type MetaRequete,
+  type OptionsHabillage,
   type PorteeCache,
   RESULTATS_CACHABLES,
 } from "./protocole/meta";
 export {
   type Annotations,
+  appelerOutil,
+  type DescripteurOutil,
+  type ExecutionOutil,
   listToolDescriptors,
+  type OptionsAppelOutil,
   type Registre,
+  type SupportTache,
   type ToolDescriptor,
   type ToolHandler,
 } from "./protocole/registre";
@@ -93,11 +113,18 @@ export {
   resultResponse,
   type ToolResult,
 } from "./protocole/rpc";
-export { type JsonSchema, TYPES_CONNUS, validateArgs } from "./protocole/valide";
+export {
+  lireCorpsBorne,
+  MAX_OCTETS_CORPS_MCP,
+  type OptionsServeurMcp,
+  servirRequeteMcp,
+} from "./protocole/serveur";
+export { type JsonSchema, TYPES_CONNUS, type TypeConnu, validateArgs } from "./protocole/valide";
 export {
   erreurVersion,
   estModerne,
   negocier,
+  negocierInitialize,
   PREMIERE_MODERNE,
   UNSUPPORTED_PROTOCOL_VERSION,
   VERSION_SANS_ENTETE,

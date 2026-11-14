@@ -83,3 +83,22 @@ export function versionAbsenteAdmise(methode: string, sertAvant2025_06_18: boole
 
 /** Version présumée d'une requête sans en-tête, quand on admet les clients anciens. */
 export const VERSION_SANS_ENTETE = "2025-03-26";
+
+/**
+ * Négocie la version d'une poignée héritée `initialize`.
+ *
+ * Si la version demandée est une chaîne présente dans `servies`, elle est retenue ; sinon,
+ * la plus haute version héritée (`!estModerne`) de `servies` est retournée, ou la dernière
+ * entrée de `servies` si aucune version héritée n'y figure.
+ */
+export function negocierInitialize(demandee: unknown, servies: readonly string[]): string {
+  if (typeof demandee === "string" && servies.includes(demandee)) {
+    return demandee;
+  }
+  const heritee = servies.find((v) => !estModerne(v));
+  if (heritee !== undefined) return heritee;
+  if (servies.length === 0) {
+    throw new Error("Au moins une version MCP doit être déclarée.");
+  }
+  return servies[servies.length - 1]!;
+}

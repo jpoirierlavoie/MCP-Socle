@@ -1,3 +1,6 @@
+> [!NOTE]
+> **Document d'archive (historique)** — Conservé pour mémoire. L'état courant du dépôt est décrit dans [README.md](../../README.md) et [CLAUDE.md](../../CLAUDE.md).
+
 # Procédures manuelles — ce que Claude Code ne peut pas faire
 
 Ce document ne contient aucun secret. Il rassemble les gestes de la phase 1 qui exigent

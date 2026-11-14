@@ -1,0 +1,13 @@
+# OSV-Scanner configuration — https://google.github.io/osv-scanner/configuration/
+#
+# Ce fichier ne porte aucune exemption par défaut, et c'est l'état recherché.
+#
+# Règles du dépôt :
+#   1. Avant toute exemption, vérifier qu'une surcharge ciblée dans `overrides`
+#      (`package.json`) ne corrige pas déjà la dépendance transitive sans casser les tests.
+#   2. Si une exemption devient inévitable, utiliser l'identifiant GHSA exact (jamais un
+#      alias CVE inutilisé, car `osv-scanner` échoue sur une exemption orpheline), avec le
+#      MOTIF et la DATE.
+#   3. `osv-scanner` sort en 1 dès qu'une vulnérabilité existe, même filtrée ici ; le verdict
+#      bloquant appartient à l'étape « Verdict » de `.github/workflows/osv-scanner.yml` qui
+#      inspecte le rapport SARIF filtré.

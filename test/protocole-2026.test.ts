@@ -1,19 +1,29 @@
 import { describe, expect, it } from "vitest";
-import { resultatDecouverte } from "../src/protocole/decouverte";
+import {
+  construireCarteServeur,
+  repondreCarteServeur,
+  resultatDecouverte,
+  SERVER_CARD_CONTENT_TYPE,
+  SERVER_CARD_SCHEMA,
+} from "../src/protocole/decouverte";
 import { decoderSentinelle, HEADER_MISMATCH, validerEntetes } from "../src/protocole/entetes";
 import {
   avecCache,
   avecServerInfo,
+  CLEF_CLIENT,
   CLEF_SERVEUR,
+  CLEF_VERSION,
   clientLisible,
   complet,
   estCachable,
+  habillerResultat,
   lireMeta,
 } from "../src/protocole/meta";
 import {
   erreurVersion,
   estModerne,
   negocier,
+  negocierInitialize,
   PREMIERE_MODERNE,
   UNSUPPORTED_PROTOCOL_VERSION,
   versionAbsenteAdmise,
@@ -244,5 +254,129 @@ describe("server/discover", () => {
   it("omet `instructions` quand il n'y en a pas, au lieu d'en mettre une vide", () => {
     const { instructions, ...sans } = base;
     expect(resultatDecouverte(sans)).not.toHaveProperty("instructions");
+  });
+});
+
+describe("durcissement UTF-8, _meta et prototype sur entetes/meta", () => {
+  it("decoderSentinelle rejette les octets UTF-8 invalides au lieu de substituer U+FFFD", () => {
+    const invalide = `=?base64?${btoa(String.fromCharCode(0xff, 0xfe, 0xfd))}?=`;
+    expect(decoderSentinelle(invalide)).toBeNull();
+  });
+
+  it("validerEntetes rejette un _meta non-objet ou protocolVersion non textuel", () => {
+    const headers = h({ "MCP-Protocol-Version": "2026-07-28", "Mcp-Method": "tools/list" });
+    expect(validerEntetes(headers, { method: "tools/list", versionMeta: 123 })).not.toBeNull();
+    expect(
+      validerEntetes(headers, {
+        method: "tools/list",
+        params: { _meta: { [CLEF_VERSION]: 123 } },
+      }),
+    ).not.toBeNull();
+    expect(
+      validerEntetes(headers, {
+        method: "tools/list",
+        params: { _meta: { [CLEF_VERSION]: "2025-11-25" } },
+      }),
+    ).not.toBeNull();
+    expect(
+      validerEntetes(headers, {
+        method: "tools/list",
+        params: { _meta: ["tableau"] },
+      }),
+    ).not.toBeNull();
+  });
+
+  it("validerEntetes supporte exigerVersionMeta et résiste aux noms du prototype", () => {
+    const headers = h({ "MCP-Protocol-Version": "2026-07-28", "Mcp-Method": "toString" });
+    expect(validerEntetes(headers, { method: "toString" })).toBeNull();
+    expect(
+      validerEntetes(
+        h({ "MCP-Protocol-Version": "2026-07-28", "Mcp-Method": "tools/list" }),
+        { method: "tools/list" },
+        { exigerVersionMeta: true },
+      ),
+    ).not.toBeNull();
+    expect(
+      validerEntetes(
+        h({ "MCP-Protocol-Version": "2026-07-28", "Mcp-Method": "tools/list" }),
+        { method: "tools/list", params: { _meta: { [CLEF_VERSION]: "2026-07-28" } } },
+        { exigerVersionMeta: true },
+      ),
+    ).toBeNull();
+  });
+
+  it("lireMeta et clientLisible ignorent les tableaux et champs non textuels", () => {
+    expect(lireMeta({ _meta: ["tableau"] })).toEqual({});
+    expect(lireMeta({ _meta: { [CLEF_CLIENT]: ["x"], [CLEF_VERSION]: 42 } })).toEqual({
+      protocolVersion: undefined,
+      clientInfo: undefined,
+      clientCapabilities: undefined,
+    });
+    expect(lireMeta({ _meta: { [CLEF_CLIENT]: { name: 123, version: {} } } }).clientInfo).toEqual(
+      {},
+    );
+    expect(clientLisible({ name: 123 as unknown as string, version: "1.0" })).toBeUndefined();
+    expect(clientLisible({ name: "Claude", version: 99 as unknown as string })).toBe("Claude");
+  });
+});
+
+describe("habillerResultat et negocierInitialize", () => {
+  it("habillerResultat laisse intact sous hérité et habille sous moderne", () => {
+    expect(habillerResultat({ ok: true }, { moderne: false, ttlMs: 1000 })).toEqual({ ok: true });
+    const mod = habillerResultat(
+      { ok: true },
+      { moderne: true, ttlMs: 60_000, serverInfo: { name: "S", title: "Titre", version: "1.0" } },
+    );
+    expect(mod.resultType).toBe("complete");
+    expect(mod.ttlMs).toBe(60_000);
+    expect(mod.cacheScope).toBe("public");
+    expect((mod._meta as Record<string, unknown>)[CLEF_SERVEUR]).toEqual({
+      name: "S",
+      title: "Titre",
+      version: "1.0",
+    });
+  });
+
+  it("negocierInitialize retombe sur la plus haute version héritée", () => {
+    expect(negocierInitialize("2025-06-18", SERVIES)).toBe("2025-06-18");
+    expect(negocierInitialize("1999-01-01", SERVIES)).toBe("2025-11-25");
+    expect(negocierInitialize(undefined, SERVIES)).toBe("2025-11-25");
+    expect(negocierInitialize(123, SERVIES)).toBe("2025-11-25");
+    expect(negocierInitialize(undefined, [PREMIERE_MODERNE])).toBe(PREMIERE_MODERNE);
+  });
+});
+
+describe("fiche SEP-2127 (server card)", () => {
+  it("construit et sert GET, HEAD, OPTIONS et 405", async () => {
+    const carte = construireCarteServeur({
+      name: "ca.exemple/test",
+      title: "Serveur Test",
+      version: "0.6.0",
+      description: "Description publique.",
+      websiteUrl: "https://exemple.test/",
+      repositoryUrl: "https://github.com/exemple/test",
+      remoteUrl: "https://exemple.test/mcp",
+      supportedProtocolVersions: SERVIES,
+    });
+    expect(carte.$schema).toBe(SERVER_CARD_SCHEMA);
+    expect(carte.remotes[0]!.supportedProtocolVersions).toEqual(SERVIES);
+
+    const opt = repondreCarteServeur("OPTIONS", carte);
+    expect(opt.status).toBe(204);
+    expect(opt.headers.get("Access-Control-Allow-Origin")).toBe("*");
+
+    const get = repondreCarteServeur("GET", carte);
+    expect(get.status).toBe(200);
+    expect(get.headers.get("Content-Type")).toBe(SERVER_CARD_CONTENT_TYPE);
+    expect(get.headers.get("X-Content-Type-Options")).toBe("nosniff");
+    expect(await get.json()).toEqual(carte);
+
+    const head = repondreCarteServeur("HEAD", carte);
+    expect(head.status).toBe(200);
+    expect(await head.text()).toBe("");
+
+    const post = repondreCarteServeur("POST", carte);
+    expect(post.status).toBe(405);
+    expect(post.headers.get("Allow")).toBe("GET, HEAD, OPTIONS");
   });
 });

@@ -1,3 +1,6 @@
+> [!NOTE]
+> **Document d'archive (historique)** — Conservé pour mémoire. L'état courant du dépôt est décrit dans [README.md](../../README.md) et [CLAUDE.md](../../CLAUDE.md).
+
 # Feuille de route — avancer par phase
 
 Complément opérationnel de `SPEC-SOCLE-COMMUN.md`. La spécification dit **quoi** construire

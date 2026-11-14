@@ -5,6 +5,7 @@ import {
   empreinte,
   frapperJeton,
   LONGUEUR_JETON,
+  MAX_LONGUEUR_PORTEUR,
   memeSecret,
   ouvrir,
   type Porte,
@@ -229,5 +230,35 @@ describe("empreinte", () => {
     expect(await empreinte("abc")).toBe(
       "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
     );
+  });
+});
+
+describe("plafond de longueur des porteurs", () => {
+  it("rejette un Authorization et un porteur dépassant MAX_LONGUEUR_PORTEUR", () => {
+    const tropLong = "a".repeat(MAX_LONGUEUR_PORTEUR + 1);
+    const limiteExacte = "b".repeat(MAX_LONGUEUR_PORTEUR);
+
+    expect(
+      bearerOf(
+        new Request("https://exemple.test/mcp", {
+          headers: { Authorization: `Bearer ${tropLong}` },
+        }),
+      ),
+    ).toBeNull();
+    expect(
+      bearerOf(
+        new Request("https://exemple.test/mcp", {
+          headers: { Authorization: `Bearer ${limiteExacte}` },
+        }),
+      ),
+    ).toBe(limiteExacte);
+
+    const porte = { mount: "/mcp", queryKey: "key", nomsSecrets: ["SECRET"] };
+    const candidats = porteursPresentes(
+      new Request(`https://exemple.test/mcp/${tropLong}?key=${limiteExacte}`),
+      new URL(`https://exemple.test/mcp/${tropLong}?key=${limiteExacte}`),
+      porte,
+    );
+    expect(candidats).toEqual([limiteExacte]);
   });
 });

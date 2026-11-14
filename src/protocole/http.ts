@@ -1,9 +1,7 @@
 /**
  * Chaîne intergicielle HTTP : origines, CORS, pré-vol, débit.
  *
- * Repris de `MCP-Jurisprudence-Quebec/src/index.ts`, seul des deux dépôts à en porter une —
- * `legislation` n'a aujourd'hui ni CORS, ni `OPTIONS`, ni contrôle d'`Origin`, ce que la
- * marche 2 vient combler.
+ * Repris de `MCP-Jurisprudence` (`src/index.ts`), généralisé pour servir les deux dépôts.
  */
 
 const JSON_HEADERS = { "Content-Type": "application/json; charset=utf-8" };
@@ -13,23 +11,28 @@ const JSON_HEADERS = { "Content-Type": "application/json; charset=utf-8" };
  *
  * DEUX EXIGENCES DISTINCTES SE REJOIGNENT ICI, et il faut les servir toutes les deux :
  *
- *   1. **CORS.** `claude.ai` est une application de NAVIGATEUR. Sans pré-vol accepté et
- *      sans `Access-Control-Allow-Origin`, le navigateur refuse la requête — et le
- *      connecteur se solde par « impossible de joindre le serveur », alors que le même
+ *   1. **CORS.** `claude.ai` et Gemini web sont des applications de NAVIGATEUR. Sans pré-vol
+ *      accepté et sans `Access-Control-Allow-Origin`, le navigateur refuse la requête — et
+ *      le connecteur se solde par « impossible de joindre le serveur », alors que le même
  *      point d'entrée répond parfaitement à un client serveur.
  *   2. **Défense contre le RÉ-ATTACHEMENT DNS**, exigée par la spécification MCP : une
  *      origine de navigateur non reconnue est REFUSÉE. Une origine ABSENTE (appel serveur
  *      à serveur) reste admise — un navigateur en pose toujours une.
  */
-export const ORIGINES_PAR_DEFAUT = ["https://claude.ai", "https://claude.com"] as const;
+export const ORIGINES_PAR_DEFAUT = [
+  "https://claude.ai",
+  "https://claude.com",
+  "https://gemini.google.com",
+  "https://aistudio.google.com",
+] as const;
 
 /** Origines admises : les défauts, plus celles d'une liste séparée par des virgules. */
 export function originesAdmises(supplementaires?: string): string[] {
   const sup = (supplementaires ?? "")
     .split(",")
-    .map((o) => o.trim())
+    .map((o) => o.trim().replace(/\/+$/, ""))
     .filter((o) => o.length > 0);
-  return [...ORIGINES_PAR_DEFAUT, ...sup];
+  return [...new Set([...ORIGINES_PAR_DEFAUT, ...sup])];
 }
 
 /** Origine à refléter, ou `null` si elle est absente ou refusée. */
@@ -57,7 +60,7 @@ export function corsHeaders(origin: string | null): Record<string, string> {
     "Access-Control-Allow-Origin": origin,
     Vary: "Origin",
     // Le client LIT ces en-têtes ; sans exposition explicite ils lui sont invisibles.
-    "Access-Control-Expose-Headers": "WWW-Authenticate, MCP-Protocol-Version",
+    "Access-Control-Expose-Headers": "WWW-Authenticate, MCP-Protocol-Version, Retry-After",
   };
 }
 
@@ -88,7 +91,7 @@ export function preflight(origin: string): Response {
       "Access-Control-Allow-Origin": origin,
       "Access-Control-Allow-Methods": "POST, OPTIONS",
       "Access-Control-Allow-Headers":
-        "Content-Type, Authorization, MCP-Protocol-Version, Mcp-Method, Mcp-Name, Accept",
+        "Content-Type, Authorization, MCP-Protocol-Version, Mcp-Method, Mcp-Name, Mcp-Session-Id, Last-Event-ID, Accept",
       "Access-Control-Max-Age": "86400",
       Vary: "Origin",
     },
@@ -123,4 +126,36 @@ export async function debitAcceptable(
   } catch {
     return true;
   }
+}
+
+/**
+ * Lit un drapeau booléen issu d'une variable d'environnement Cloudflare Workers.
+ *
+ * Absence ou chaîne vide retombe sur `defaut`. Seuls `"true"` et `"false"` (insensibles
+ * à la casse après rognage) basculent la valeur ; toute autre chaîne retombe sur `defaut`.
+ */
+export function drapeau(valeur: unknown, defaut = false): boolean {
+  if (typeof valeur === "boolean") return valeur;
+  if (typeof valeur !== "string") return defaut;
+  const v = valeur.trim().toLowerCase();
+  if (v === "true") return true;
+  if (v === "false") return false;
+  return defaut;
+}
+
+export interface OptionsSante {
+  /** Si `false` (coupe-circuit), répond `404` (« Not found »). Défaut : `true`. */
+  actif?: boolean;
+  commit?: string;
+  origin?: string | null;
+}
+
+/** Réponse HTTP du point de santé `/health`. */
+export function reponseSante(options: OptionsSante = {}): Response {
+  if (options.actif === false) {
+    return new Response("Not found", { status: 404 });
+  }
+  const commit =
+    typeof options.commit === "string" && options.commit.length > 0 ? options.commit : "inconnu";
+  return jsonResponse({ status: "ok", commit }, 200, options.origin ?? null);
 }

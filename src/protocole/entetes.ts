@@ -11,7 +11,9 @@
  * d'une classe d'outil sur `Mcp-Name` seul. L'en-tête sert à router ; le corps fait foi.
  */
 
-/** Erreur JSON-RPC de la spécification : en-tête et corps divergent, ou en-tête manquant. */
+import { CLEF_VERSION } from "./meta";
+
+/** Faute de concordance en-tête ↔ corps. */
 export const HEADER_MISMATCH = -32020;
 
 /** Les méthodes pour lesquelles `Mcp-Name` est EXIGÉ, et le champ qu'il doit refléter. */
@@ -40,7 +42,7 @@ export function decoderSentinelle(valeur: string): string | null {
     // `atob` rend une chaîne d'octets ; il faut la relire en UTF-8, sinon « é » revient en
     // deux caractères et la comparaison échoue sur un nom pourtant correct.
     const octets = Uint8Array.from(atob(charge), (c) => c.charCodeAt(0));
-    return new TextDecoder().decode(octets);
+    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(octets);
   } catch {
     return null;
   }
@@ -50,8 +52,13 @@ export function decoderSentinelle(valeur: string): string | null {
 export interface CorpsAValider {
   method: string;
   params?: Record<string, unknown>;
-  /** Version annoncée dans `_meta`, si elle y est. */
-  versionMeta?: string;
+  /** Version annoncée dans `_meta`, si elle y est. Accepte `unknown` pour rejeter les non-chaînes. */
+  versionMeta?: unknown;
+}
+
+export interface OptionsValidationEntetes {
+  /** Exige la présence de `_meta["io.modelcontextprotocol/protocolVersion"]` sous forme de chaîne. */
+  exigerVersionMeta?: boolean;
 }
 
 /**
@@ -63,14 +70,45 @@ export interface CorpsAValider {
  * ⚠ N'APPELER QUE SOUS UNE RÉVISION MODERNE. Les révisions antérieures n'exigent ni
  *   `Mcp-Method` ni `Mcp-Name` ; les réclamer là-bas refuserait des clients conformes.
  */
-export function validerEntetes(entetes: Headers, corps: CorpsAValider): string | null {
+export function validerEntetes(
+  entetes: Headers,
+  corps: CorpsAValider,
+  options?: OptionsValidationEntetes,
+): string | null {
   // ── MCP-Protocol-Version ──────────────────────────────────────────────────────────────
   const version = entetes.get("MCP-Protocol-Version");
   if (version === null) {
     return "En-tête « MCP-Protocol-Version » manquant.";
   }
-  if (corps.versionMeta !== undefined && corps.versionMeta !== version) {
-    return `« MCP-Protocol-Version » (${version}) ne correspond pas à la version du corps (${corps.versionMeta}).`;
+  if (corps.versionMeta !== undefined) {
+    if (typeof corps.versionMeta !== "string") {
+      return "La version annoncée dans « _meta » doit être une chaîne de caractères.";
+    }
+    if (corps.versionMeta !== version) {
+      return `« MCP-Protocol-Version » (${version}) ne correspond pas à la version du corps (${corps.versionMeta}).`;
+    }
+  }
+  const params = corps.params;
+  let versionMetaPresente = typeof corps.versionMeta === "string";
+  if (params !== undefined && Object.hasOwn(params, "_meta") && params._meta !== undefined) {
+    const meta = params._meta;
+    if (typeof meta !== "object" || meta === null || Array.isArray(meta)) {
+      return "« params._meta » doit être un objet.";
+    }
+    const metaRec = meta as Record<string, unknown>;
+    if (Object.hasOwn(metaRec, CLEF_VERSION) && metaRec[CLEF_VERSION] !== undefined) {
+      const v = metaRec[CLEF_VERSION];
+      if (typeof v !== "string") {
+        return `« params._meta["${CLEF_VERSION}"] » doit être une chaîne de caractères.`;
+      }
+      if (v !== version) {
+        return `« MCP-Protocol-Version » (${version}) ne correspond pas à la version du corps (${v}).`;
+      }
+      versionMetaPresente = true;
+    }
+  }
+  if (options?.exigerVersionMeta && !versionMetaPresente) {
+    return `« _meta["${CLEF_VERSION}"] » manquant pour ${corps.method}.`;
   }
 
   // ── Mcp-Method ────────────────────────────────────────────────────────────────────────
@@ -81,7 +119,7 @@ export function validerEntetes(entetes: Headers, corps: CorpsAValider): string |
   }
 
   // ── Mcp-Name ──────────────────────────────────────────────────────────────────────────
-  const champ = NOM_ATTENDU[corps.method];
+  const champ = Object.hasOwn(NOM_ATTENDU, corps.method) ? NOM_ATTENDU[corps.method] : undefined;
   if (champ === undefined) return null; // cette méthode n'exige pas de nom
 
   const brut = entetes.get("Mcp-Name");

@@ -1,9 +1,15 @@
 # SPEC — Socle commun des connecteurs juridiques, et ouverture à la confraternité
 
-> **Destinataire : Claude Code.** Document d'implémentation. Il vaut pour les trois dépôts —
-> `MCP-Socle-Juridique` (à créer), `MCP-Legislation-Quebec`, `MCP-Jurisprudence-Quebec`.
-> Les considérations, les arbitrages et les réserves sont dans `NOTE-OUVERTURE-PUBLIQUE.md` :
-> **la lire avant celle-ci.** Ici, ce sont les contrats.
+> **Destinataire : agents de développement.** Document d'architecture et de spécification. Il
+> vaut pour les trois dépôts — `MCP-Socle-Juridique`, `MCP-Legislation`, `MCP-Jurisprudence`.
+> Les considérations, arbitrages et notes historiques d'ouverture sont archivés dans
+> `docs/archive/NOTE-OUVERTURE-PUBLIQUE.md`. Ici figurent les contrats.
+>
+> **Statut d'implémentation (`v0.6.0`) :** la fondation transport/protocole et l'authentification
+> par porteur partagé (`src/identite/{porteur,refus}.ts`, `src/protocole/*`, `servirRequeteMcp`,
+> SEP-2127 `/mcp/server-card`) sont livrées. L'ouverture publique multilocataire (§4 `titulaire` /
+> `jeton` D1, `Principal`, `DepotJetons`, consoles d'inscription et OAuth / RFC 9728) demeure
+> reportée à une phase ultérieure.
 >
 > **Paramètres arrêtés.** Service gratuit. Admission par demande + revue humaine de l'exploitant.
 > Aucune facturation, aucune intégration de paiement.

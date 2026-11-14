@@ -9,7 +9,7 @@
  * sens fort : zéro dépendance d'exécution. Le sous-ensemble couvre les schémas des deux
  * connecteurs, et rien de plus n'est nécessaire.
  *
- * Repris de `MCP-Jurisprudence-Quebec/src/mcp/validate.ts`, à comportement identique.
+ * Repris de `MCP-Jurisprudence`, avec fermeture par défaut sur tout `type` inconnu.
  *
  * ⚠ CE QUE CE VALIDATEUR NE FAIT PAS, et qu'il faut savoir avant de s'y fier :
  *
@@ -18,14 +18,15 @@
  *     Un schéma qui porte `default` ne fait rien arriver — la valeur doit descendre dans
  *     le gestionnaire (`args.lang ?? "fr"`). Le piège est réel et silencieux : le schéma
  *     publié continue d'annoncer le défaut pendant que l'argument arrive `undefined`.
- *   · **Un `type` inconnu DÉSARME la validation de ce champ** (`typeOk` rend `true` par
- *     défaut). Une coquille — `"integar"` — n'échoue pas, elle laisse passer. D'où
- *     `TYPES_CONNUS`, exporté pour qu'un test de garde puisse épingler que tout `type`
- *     d'un registre appartient à l'ensemble.
+ *   · **Un `type` inconnu ÉCHOUE fermement** (`typeOk` rend `false` par défaut, et
+ *     `JsonSchema.type` est restreint à `TypeConnu`). Tout registre reste invité à épingler
+ *     les schémas publiés avec `TYPES_CONNUS`.
  */
 
-/** Les seuls `type` que `typeOk` sait réellement contrôler. Tout autre est ignoré. */
+/** Les seuls `type` pris en charge par `typeOk`. Tout autre type est rejeté (fermé par défaut). */
 export const TYPES_CONNUS = ["object", "string", "integer", "number", "boolean", "array"] as const;
+
+export type TypeConnu = (typeof TYPES_CONNUS)[number];
 
 export interface JsonSchema {
   /**
@@ -38,7 +39,7 @@ export interface JsonSchema {
    * à trancher.
    */
   $schema?: string;
-  type?: string;
+  type?: TypeConnu;
   properties?: Record<string, JsonSchema>;
   required?: string[];
   enum?: unknown[];
@@ -55,7 +56,7 @@ export interface JsonSchema {
   default?: unknown;
 }
 
-function typeOk(expected: string, value: unknown): boolean {
+function typeOk(expected: TypeConnu | string, value: unknown): boolean {
   switch (expected) {
     case "object":
       return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -70,7 +71,7 @@ function typeOk(expected: string, value: unknown): boolean {
     case "array":
       return Array.isArray(value);
     default:
-      return true;
+      return false;
   }
 }
 
@@ -83,6 +84,10 @@ const NOM_TYPE: Record<string, string> = {
   array: "un tableau",
 };
 
+function estPresente(obj: Record<string, unknown>, clef: string): boolean {
+  return Object.hasOwn(obj, clef) && obj[clef] !== undefined;
+}
+
 function validateValue(schema: JsonSchema, value: unknown, nom: string): string[] {
   const erreurs: string[] = [];
 
@@ -92,7 +97,8 @@ function validateValue(schema: JsonSchema, value: unknown, nom: string): string[
         `« ${nom} » doit être un entier compris entre ${schema.minimum} et ${schema.maximum}.`,
       );
     } else {
-      erreurs.push(`« ${nom} » doit être ${NOM_TYPE[schema.type] ?? schema.type}.`);
+      const libelle = Object.hasOwn(NOM_TYPE, schema.type) ? NOM_TYPE[schema.type] : schema.type;
+      erreurs.push(`« ${nom} » doit être ${libelle}.`);
     }
     return erreurs;
   }
@@ -146,14 +152,16 @@ function validateValue(schema: JsonSchema, value: unknown, nom: string): string[
     const props = schema.properties ?? {};
     if (schema.additionalProperties === false) {
       for (const clef of Object.keys(obj)) {
-        if (!(clef in props)) erreurs.push(`« ${clef} » n'est pas un argument reconnu.`);
+        if (obj[clef] !== undefined && !Object.hasOwn(props, clef)) {
+          erreurs.push(`« ${clef} » n'est pas un argument reconnu.`);
+        }
       }
     }
     for (const clef of schema.required ?? []) {
-      if (!(clef in obj)) erreurs.push(`« ${clef} » est obligatoire.`);
+      if (!estPresente(obj, clef)) erreurs.push(`« ${clef} » est obligatoire.`);
     }
     for (const [clef, sous] of Object.entries(props)) {
-      if (clef in obj) erreurs.push(...validateValue(sous, obj[clef], clef));
+      if (estPresente(obj, clef)) erreurs.push(...validateValue(sous, obj[clef], clef));
     }
   }
 

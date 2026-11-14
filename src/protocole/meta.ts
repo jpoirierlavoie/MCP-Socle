@@ -32,15 +32,30 @@ export interface MetaRequete {
  *   mesure qui dira un jour si une révision ancienne peut être retirée. Le conserver dans
  *   le plan technique (phase 4), jamais ailleurs.
  */
+function estObjetSimple(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
 export function lireMeta(params?: Record<string, unknown>): MetaRequete {
-  const meta = params?._meta as Record<string, unknown> | undefined;
-  if (!meta) return {};
-  const client = meta[CLEF_CLIENT] as InfoClient | undefined;
+  if (!estObjetSimple(params)) return {};
+  const meta = params._meta;
+  if (!estObjetSimple(meta)) return {};
+
+  const clientRaw = meta[CLEF_CLIENT];
+  let clientInfo: InfoClient | undefined;
+  if (estObjetSimple(clientRaw)) {
+    clientInfo = {
+      ...(typeof clientRaw.name === "string" ? { name: clientRaw.name } : {}),
+      ...(typeof clientRaw.version === "string" ? { version: clientRaw.version } : {}),
+    };
+  }
+
+  const capRaw = meta[CLEF_CAPACITES];
   return {
     protocolVersion:
       typeof meta[CLEF_VERSION] === "string" ? (meta[CLEF_VERSION] as string) : undefined,
-    clientInfo: client && typeof client === "object" ? client : undefined,
-    clientCapabilities: meta[CLEF_CAPACITES] as Record<string, unknown> | undefined,
+    clientInfo,
+    clientCapabilities: estObjetSimple(capRaw) ? capRaw : undefined,
   };
 }
 
@@ -51,16 +66,18 @@ export function lireMeta(params?: Record<string, unknown>): MetaRequete {
  * un objet ouvert, et un client peut y mettre ce qu'il veut.
  */
 export function clientLisible(info?: InfoClient): string | undefined {
-  if (!info?.name) return undefined;
-  return info.version ? `${info.name}/${info.version}` : info.name;
+  if (!info || typeof info.name !== "string" || info.name.length === 0) return undefined;
+  return typeof info.version === "string" && info.version.length > 0
+    ? `${info.name}/${info.version}`
+    : info.name;
 }
 
 /** Ajoute `serverInfo` au `_meta` d'un résultat — à la racine du `_meta`, non du résultat. */
 export function avecServerInfo<T extends Record<string, unknown>>(
   resultat: T,
-  serverInfo: { name: string; version: string },
+  serverInfo: { name: string; title?: string; version: string },
 ): T & { _meta: Record<string, unknown> } {
-  const meta = (resultat._meta ?? {}) as Record<string, unknown>;
+  const meta = estObjetSimple(resultat._meta) ? resultat._meta : {};
   return { ...resultat, _meta: { ...meta, [CLEF_SERVEUR]: serverInfo } };
 }
 
@@ -114,4 +131,33 @@ export function complet<T extends Record<string, unknown>>(
   resultat: T,
 ): T & { resultType: "complete" } {
   return { ...resultat, resultType: "complete" };
+}
+
+export interface OptionsHabillage {
+  moderne: boolean;
+  ttlMs?: number;
+  cacheScope?: PorteeCache;
+  serverInfo?: { name: string; title?: string; version: string };
+}
+
+/**
+ * Habille un résultat brut selon la révision négociée.
+ *
+ * Sous une révision héritée (`moderne === false`), rend `brut` intact : ni `resultType`,
+ * ni indices de cache, ni `_meta` supplémentaire. Sous une révision moderne, ajoute
+ * `resultType: "complete"`, et selon les options les indices de cache et `serverInfo`.
+ */
+export function habillerResultat<T extends Record<string, unknown>>(
+  brut: T,
+  options: OptionsHabillage,
+): Record<string, unknown> {
+  if (!options.moderne) return brut;
+  let r: Record<string, unknown> = complet(brut);
+  if (options.ttlMs !== undefined) {
+    r = avecCache(r, options.ttlMs, options.cacheScope ?? "public");
+  }
+  if (options.serverInfo !== undefined) {
+    r = avecServerInfo(r, options.serverInfo);
+  }
+  return r;
 }

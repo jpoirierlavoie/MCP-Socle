@@ -8,7 +8,7 @@
  * Les lots (tableaux) sont refusés : le regroupement a été retiré de la révision
  * `2025-06-18`, et aucun client connu n'en émet.
  *
- * Repris de `MCP-Jurisprudence-Quebec/src/mcp/rpc.ts`, à comportement identique.
+ * Repris de `MCP-Jurisprudence`, puis étendu pour servir les deux dépôts.
  */
 
 export const PARSE_ERROR = -32700;
@@ -60,6 +60,18 @@ export function errorResponse(
   return { jsonrpc: "2.0", id, error };
 }
 
+function idValide(m: Record<string, unknown>): RequestId {
+  if (!Object.hasOwn(m, "id")) return null;
+  if (
+    m.id === null ||
+    typeof m.id === "string" ||
+    (typeof m.id === "number" && Number.isFinite(m.id))
+  ) {
+    return m.id;
+  }
+  return null;
+}
+
 /**
  * Analyse et valide structurellement UN message JSON-RPC 2.0.
  *
@@ -82,33 +94,48 @@ export function parseMessage(raw: string): JsonRpcMessage {
   }
 
   const m = message as Record<string, unknown>;
+  const id = idValide(m);
   if (m.jsonrpc !== "2.0") {
-    throw new JsonRpcError(INVALID_REQUEST, 'Requête invalide : « jsonrpc » doit valoir "2.0".');
+    throw new JsonRpcError(
+      INVALID_REQUEST,
+      'Requête invalide : « jsonrpc » doit valoir "2.0".',
+      id,
+    );
   }
   if (typeof m.method !== "string" || m.method.length === 0) {
     throw new JsonRpcError(
       INVALID_REQUEST,
       "Requête invalide : « method » doit être une chaîne non vide.",
+      id,
     );
   }
-  if ("id" in m && m.id !== null && typeof m.id !== "string" && typeof m.id !== "number") {
+  if (
+    Object.hasOwn(m, "id") &&
+    m.id !== null &&
+    typeof m.id !== "string" &&
+    !(typeof m.id === "number" && Number.isFinite(m.id))
+  ) {
     throw new JsonRpcError(
       INVALID_REQUEST,
       "Requête invalide : « id » doit être une chaîne ou un nombre.",
     );
   }
-  if (m.params !== undefined && m.params !== null && typeof m.params !== "object") {
+  if (
+    m.params !== undefined &&
+    m.params !== null &&
+    (typeof m.params !== "object" || Array.isArray(m.params))
+  ) {
     throw new JsonRpcError(
       INVALID_REQUEST,
       "Requête invalide : « params » doit être un objet.",
-      (m.id ?? null) as RequestId,
+      id,
     );
   }
 
   return {
     jsonrpc: "2.0",
     method: m.method,
-    id: ("id" in m ? m.id : undefined) as RequestId | undefined,
+    id: (Object.hasOwn(m, "id") ? m.id : undefined) as RequestId | undefined,
     params: (m.params ?? undefined) as Record<string, unknown> | undefined,
   };
 }
@@ -152,22 +179,16 @@ export interface ToolResult {
  *   Le renversement de doctrine porte sur des décisions écrites et réexaminées dans les
  *   deux connecteurs : il se fera par décision, jamais par glissement.
  *
- *   L'argument POUR la prose seule n'est pas faible, et il vit là où il a été formulé :
- *   invariant 4 de `MCP-Jurisprudence-Quebec/CLAUDE.md`. Le lire avant d'y toucher. Le
- *   socle n'en porte pas la copie — il ne connaît ni verdicts, ni réserves, ni mises en
- *   garde juridiques ; ce serait la frontière de la §2 franchie par le commentaire.
- *
- *   Ce que le socle porte, en revanche, est le CONTRÔLE qui rend le renversement tenable :
- *   `gardes` non vide par obligation de compilation dès qu'une réserve s'applique
- *   (`sortie/gardes.ts`, marche 4).
+ *   Ce que le socle peut fournir au besoin reste une enveloppe applicative explicite, sans
+ *   gonfler `tools/list` avec un `outputSchema` inutile.
  */
 export function ok(text: string, structured?: Record<string, unknown>): ToolResult {
-  // La clef n'apparaît QUE si une charge est fournie : sans elle, la sortie reste
+  // La clef n'apparaît QUE si une charge non vide est fournie : sans elle, la sortie reste
   // exactement `{ content, isError }`, ce qu'un test du socle épingle.
   return {
     content: [{ type: "text", text }],
     isError: false,
-    ...(structured ? { structuredContent: structured } : {}),
+    ...(structured && Object.keys(structured).length > 0 ? { structuredContent: structured } : {}),
   };
 }
 

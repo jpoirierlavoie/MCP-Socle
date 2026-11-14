@@ -1,3 +1,6 @@
+> [!NOTE]
+> **Document d'archive (historique)** — Conservé pour mémoire. L'état courant du dépôt est décrit dans [README.md](../../README.md) et [CLAUDE.md](../../CLAUDE.md).
+
 # Ouvrir les connecteurs juridiques à la confraternité — considérations et arbitrages
 
 **Objet.** Exposer publiquement `legislation.poirierlavoie.ca` (Législation du Québec) et
