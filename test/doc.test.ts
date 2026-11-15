@@ -29,13 +29,13 @@ function sansCommentaires(code: string): string {
 }
 
 describe("hygiène documentaire et manifeste", () => {
-  it("package.json déclare la version 0.6.1 et zéro dépendance d'exécution", () => {
+  it("package.json déclare la version 0.6.2 et zéro dépendance d'exécution", () => {
     const pkg = JSON.parse(pkgRaw) as {
       version: string;
       dependencies?: Record<string, string>;
       scripts?: Record<string, string>;
     };
-    expect(pkg.version).toBe("0.6.1");
+    expect(pkg.version).toBe("0.6.2");
     expect(Object.keys(pkg.dependencies ?? {})).toEqual([]);
     expect(pkg.scripts?.["type-check"]).toBe("tsc --noEmit");
     expect(pkg.scripts?.lint).toBe("biome check .");
@@ -55,12 +55,12 @@ describe("hygiène documentaire et manifeste", () => {
       expect(doc).not.toContain("MCP-Jurisprudence-Quebec");
       expect(doc).not.toContain("MCP-Legislation-Quebec");
     }
-    expect(readmeMd).toContain("#v0.6.1");
-    expect(claudeMd).toContain("#v0.6.1");
+    expect(readmeMd).toContain("#v0.6.2");
+    expect(claudeMd).toContain("#v0.6.2");
     expect(readmeMd).not.toContain("#v0.1.0");
-    expect(readmeMd).not.toContain("#v0.6.0");
+    expect(readmeMd).not.toContain("#v0.6.1");
     expect(claudeMd).not.toContain("#v0.5.0");
-    expect(claudeMd).not.toContain("#v0.6.0");
+    expect(claudeMd).not.toContain("#v0.6.1");
   });
 
   it("les documents datés sont archivés sous docs/archive/ et absents de la racine", () => {
