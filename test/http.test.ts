@@ -34,6 +34,8 @@ describe("origines", () => {
   it("normalise les barres finales et déduplique les origines supplémentaires", () => {
     const a = originesAdmises("https://claude.ai/, https://exemple.test///, https://exemple.test/");
     expect(a).toEqual([...ORIGINES_PAR_DEFAUT, "https://exemple.test"]);
+    const pathologique = `https://exemple.test/${"/".repeat(5_000)}`;
+    expect(originesAdmises(pathologique)).toEqual([...ORIGINES_PAR_DEFAUT, "https://exemple.test"]);
   });
 
   it("la liste supplémentaire AJOUTE, elle ne remplace pas", () => {

@@ -36,6 +36,12 @@ describe("trimTrailingSlash", () => {
     expect(trimTrailingSlash("/mcp///")).toBe("/mcp");
     expect(trimTrailingSlash("/")).toBe("/");
   });
+
+  it("reste linéaire sur des rafales de barres obliques (anti-ReDoS)", () => {
+    const rafale = `${"/".repeat(5_000)}a`;
+    expect(trimTrailingSlash(`/mcp${rafale}`)).toBe(`/mcp${rafale}`);
+    expect(trimTrailingSlash(`/mcp/${"/".repeat(5_000)}`)).toBe("/mcp");
+  });
 });
 
 describe("memeSecret", () => {
