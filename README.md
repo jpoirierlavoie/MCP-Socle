@@ -18,7 +18,7 @@ déploiement :
 
 ```jsonc
 "devDependencies": {
-  "@poirierlavoie/socle-juridique": "github:jpoirierlavoie/MCP-Socle-Juridique#v0.6.0"
+  "@poirierlavoie/socle-juridique": "github:jpoirierlavoie/MCP-Socle-Juridique#v0.6.1"
 }
 ```
 
@@ -51,7 +51,7 @@ Les tests s'exécutent dans `workerd` (`@cloudflare/vitest-pool-workers`) pour �
 | [`src/protocole/LISEZ-MOI.md`](src/protocole/LISEZ-MOI.md) | inventaire de `protocole/` (`rpc.ts`, `valide.ts`, `registre.ts`, `versions.ts`, `entetes.ts`, `meta.ts`, `decouverte.ts`, `http.ts`, `serveur.ts`) |
 | [`docs/archive/`](docs/archive/) | documents historiques d'ouverture et de planification (`NOTE-OUVERTURE-PUBLIQUE.md`, `FEUILLE-DE-ROUTE.md`, `PROCEDURES-MANUELLES.md`) |
 
-## État (`v0.6.0`)
+## État (`v0.6.1`)
 
 - **Livré (`src/identite/` et `src/protocole/`) :** extraction et appariement constant-time des
   porteurs (`MAX_LONGUEUR_PORTEUR = 512`), refus HTTP (`404`/`401`/`403`/`429`/`405`), enveloppe

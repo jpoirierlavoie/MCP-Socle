@@ -35,7 +35,7 @@ Hors portée :
 
 ---
 
-## Propriétés de sécurité et de confidentialité intégrées (`v0.6.0`)
+## Propriétés de sécurité et de confidentialité intégrées (`v0.6.1`)
 
 - **Authentification fermée par défaut et comparaison à temps constant :** `apparie` compare des condensés SHA-256 via `crypto.subtle.timingSafeEqual` (aucune liste vide acceptée, aucun secret journalisé, aucun court-circuit révélant quel secret ou porteur a concordé). Longueur des jetons porteurs plafonnée à `MAX_LONGUEUR_PORTEUR` (512 caractères).
 - **Hygiène des journaux et porteurs d'authentification :** Le socle n'enregistre jamais `request.url` ni les jetons présentés en erreur (`decodeURIComponent` échoue silencieusement en refus fermé). Le porteur `?key=` reste optionnel dans `Porte` ; les connecteurs privilégient `Authorization: Bearer` partout où le client le supporte afin d'éviter l'inscription du jeton dans les journaux d'arête URL.
