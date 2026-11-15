@@ -79,9 +79,16 @@ export function decodeOrNull(segment: string): string | null {
   }
 }
 
+/** Retire toutes les barres obliques finales en temps linéaire $O(N)$ sans expression régulière. */
+export function sansBarresFinales(s: string): string {
+  let fin = s.length;
+  while (fin > 0 && s.charCodeAt(fin - 1) === 47) fin--;
+  return fin === s.length ? s : s.slice(0, fin);
+}
+
 /** Barres obliques finales ôtées, toutes d'un coup. La racine est préservée. */
 export function trimTrailingSlash(pathname: string): string {
-  return pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
+  return pathname.length > 1 ? sansBarresFinales(pathname) : pathname;
 }
 
 /** Jeton porté par l'en-tête `Authorization`, ou `null`. */
@@ -123,9 +130,9 @@ export function porteursPresentes(request: Request, url: URL, porte: Porte): str
   const prefixe = `${porte.mount}/`;
   if (url.pathname.startsWith(prefixe)) {
     const brut = url.pathname.slice(prefixe.length);
-    const profond = brut.replace(/\/+$/, "").includes("/");
+    const rogne = sansBarresFinales(brut);
+    const profond = rogne.includes("/");
     if (brut.length > 0 && !(porte.segmentBorne === true && profond)) {
-      const rogne = brut.replace(/\/+$/, "");
       // `rogne` EN PLUS de `brut`, jamais à sa place.
       for (const forme of rogne === brut ? [brut] : [brut, rogne]) {
         candidats.push(forme); // tel quel : ferme le cas « le secret contient un % »

@@ -4,6 +4,8 @@
  * Repris de `MCP-Jurisprudence` (`src/index.ts`), généralisé pour servir les deux dépôts.
  */
 
+import { sansBarresFinales } from "../identite/porteur";
+
 const JSON_HEADERS = { "Content-Type": "application/json; charset=utf-8" };
 
 /**
@@ -30,7 +32,7 @@ export const ORIGINES_PAR_DEFAUT = [
 export function originesAdmises(supplementaires?: string): string[] {
   const sup = (supplementaires ?? "")
     .split(",")
-    .map((o) => o.trim().replace(/\/+$/, ""))
+    .map((o) => sansBarresFinales(o.trim()))
     .filter((o) => o.length > 0);
   return [...new Set([...ORIGINES_PAR_DEFAUT, ...sup])];
 }
