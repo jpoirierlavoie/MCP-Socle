@@ -3,7 +3,7 @@
 Code partagé par les deux connecteurs MCP de Poirier Lavoie avocat :
 
 - [`MCP-Legislation`](https://github.com/jpoirierlavoie/MCP-Legislation) — Législation du Québec et du Canada
-- [`MCP-Jurisprudence`](https://github.com/jpoirierlavoie/MCP-Jurisprudence) — Jurisprudence canadienne et greffes du Québec
+- [`MCP-Jurisprudence`](https://github.com/jpoirierlavoie/MCP-Jurisprudence) — Jurisprudence canadienne (collection CanLII)
 
 Le socle porte le **protocole** (JSON-RPC 2.0, transport Streamable HTTP sans état, négociation
 de versions, en-têtes `2026-07-28`, fiche SEP-2127 `/mcp/server-card`, validateur JSON Schema et
@@ -44,7 +44,8 @@ Les tests s'exécutent dans `workerd` (`@cloudflare/vitest-pool-workers`) pour �
 |---|---|
 | [`CLAUDE.md`](CLAUDE.md) | consignes de travail et invariants de ce dépôt |
 | [`GEMINI.md`](GEMINI.md) | guide de contexte concis pour agents (< 24 Kio) |
-| [`SECURITY.md`](SECURITY.md) | politique de divulgation coordonnée et propriétés de sécurité |
+| [`SECURITY.md`](SECURITY.md) | politique de divulgation coordonnée (sécurité, confidentialité et secret professionnel) et propriétés de sécurité |
+| [`LICENSE`](LICENSE) | licence Creative Commons `CC-BY-NC-SA-4.0` |
 | [`SPEC-SOCLE-COMMUN.md`](SPEC-SOCLE-COMMUN.md) | contrats et architecture cible (dont l'ouverture multilocataire en phase 2) |
 | [`src/identite/LISEZ-MOI.md`](src/identite/LISEZ-MOI.md) | inventaire de `identite/` (`porteur.ts`, `refus.ts`) |
 | [`src/protocole/LISEZ-MOI.md`](src/protocole/LISEZ-MOI.md) | inventaire de `protocole/` (`rpc.ts`, `valide.ts`, `registre.ts`, `versions.ts`, `entetes.ts`, `meta.ts`, `decouverte.ts`, `http.ts`, `serveur.ts`) |

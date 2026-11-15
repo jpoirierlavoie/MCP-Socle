@@ -118,8 +118,13 @@ npm.cmd test              # npx.cmd vitest run (environnement workerd)
 npm.cmd audit             # 0 vulnérabilité attendue
 ```
 
-## 7. Propagation et impact sur les dépôts dépendants
+## 7. Évaluation d'impact obligatoire (intra-dépôt, README, pages publiques HTML aval et inter-dépôts)
 
-Toute modification apportée au socle nécessite d'évaluer l'impact sur les deux connecteurs dépendants avant publication d'un nouveau tag semver :
-1. **`MCP-Legislation`** : Utilise le socle sous `"SOCLE": "true"` via `servirRequeteMcp` et `src/routeur.ts`. Refuse en HTTP 404 sans corps.
-2. **`MCP-Jurisprudence`** : Utilise le socle pour l'authentification Bearer, la validation d'arguments et le transport JSON-RPC. Refuse en HTTP 401 Bearer.
+**Aucune tâche touchant `@poirierlavoie/socle-juridique` n'est terminée tant que son impact n'a pas été évalué et explicitement rapporté sur chacun des quatre axes ci-dessous** (« non touché » doit être énoncé avec justification, jamais passé sous silence) :
+
+| # | Axe d'impact | Éléments à inspecter | Ce qui impose une action |
+|---|---|---|---|
+| 1 | **Code, contrats et gardes (`src/`, `SPEC`, `test/`)** | `src/identite/`, `src/protocole/`, `src/index.ts`, `SPEC-SOCLE-COMMUN.md`, `test/` (`workerd`), `test/doc.test.ts` | Toute évolution d'API, de validation JSON Schema, d'en-têtes MCP, de porteurs ou de refus (`404`/`401`/`403`/`429`) |
+| 2 | **`README.md` et gouvernance du dépôt** | `README.md`, `src/identite/LISEZ-MOI.md`, `src/protocole/LISEZ-MOI.md`, `SECURITY.md`, `LICENSE` (`CC-BY-NC-SA-4.0`), `package.json`, `CLAUDE.md`, `GEMINI.md` | Tout changement de version (`#v0.6.0`), de module, de propriété de sécurité/confidentialité ou d'étiquette |
+| 3 | **Page publique HTML (`GET /`) et découverte SEP-2127** | `construireCarteServeur`, `repondreCarteServeur` (`/mcp/server-card`) ici ; sections `#acces` des **pages publiques HTML (`GET /`, `src/site.ts` / `src/site.i18n.ts`)** de `MCP-Legislation` et `MCP-Jurisprudence` | Le socle étant une bibliothèque sans route `GET /` propre, tout changement touchant les porteurs (`Bearer`, `?key=`, `/mcp/<secret>`), les statuts de refus, CORS ou SEP-2127 oblige à vérifier si la prose HTML publique des connecteurs aval reste exacte |
+| 4 | **Impacts inter-dépôts (`Cross-repository`)** | **`MCP-Legislation`** (`SOCLE="true"`, `src/routeur.ts`, refus `404`), **`MCP-Jurisprudence`** (Bearer/SHA-256, refus `401`), **`pratique-civile-outils`** (cohérence de protocole) et **`pratique-civile-quebecoise`** (manifestes clients, `skills/`, `regenerer_cache_mcp.py`, `synchroniser_plugin_gemini.py`, `verifier.py`, `verifier_tout.py`) | Avant publication d'un nouveau tag semver, vérifier les répercussions dans chaque dépôt dépendant, leurs `README.md` respectifs et leurs suites de tests |
