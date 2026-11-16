@@ -1,11 +1,11 @@
 # Security, Privacy & Professional Secrecy Policy / Politique de sécurité, confidentialité et secret professionnel
 
-> **Français :** Ce dépôt contient `@poirierlavoie/socle-juridique`, la bibliothèque partagée par les connecteurs MCP Cloudflare Workers en lecture seule [`MCP-Legislation`](https://github.com/jpoirierlavoie/MCP-Legislation) et [`MCP-Jurisprudence`](https://github.com/jpoirierlavoie/MCP-Jurisprudence). Elle ne contient aucun secret ni aucune dépendance d'exécution (`dependencies` vide).
+> **Français :** Ce dépôt contient `@poirierlavoie/mcp-socle`, la bibliothèque partagée par les connecteurs MCP Cloudflare Workers en lecture seule [`MCP-Legislation`](https://github.com/jpoirierlavoie/MCP-Legislation) et [`MCP-Jurisprudence`](https://github.com/jpoirierlavoie/MCP-Jurisprudence). Elle ne contient aucun secret ni aucune dépendance d'exécution (`dependencies` vide).
 > Pour signaler une **vulnérabilité de sécurité** OU un **enjeu de vie privée, de confidentialité ou de secret professionnel / privilège** lié au socle ou à un connecteur qui l'emploie, **n'ouvrez jamais d'issue publique sur GitHub** — écrivez directement à :
 > **Jason Poirier Lavoie, avocat (Québec)** — `jason@poirierlavoie.ca` (accusé de réception sous **72 heures**, divulgation coordonnée).
 > **Ne joignez jamais** de documents clients confidentiels, de communications privilégiées ni de jetons/secrets actifs à un premier message ; utilisez des scénarios synthétiques.
 >
-> **English:** To report a **security vulnerability** OR a **privacy, confidentiality, or solicitor-client privilege issue** affecting `@poirierlavoie/socle-juridique` or downstream connectors, **do not open a public GitHub issue** — email the maintainer directly:
+> **English:** To report a **security vulnerability** OR a **privacy, confidentiality, or solicitor-client privilege issue** affecting `@poirierlavoie/mcp-socle` or downstream connectors, **do not open a public GitHub issue** — email the maintainer directly:
 > **Jason Poirier Lavoie, Lawyer (Québec)** — `jason@poirierlavoie.ca` (acknowledgement within **72 hours**, coordinated disclosure).
 > **Never send** privileged client records, unredacted identifying facts, or live bearer tokens/secrets in an initial disclosure; use synthetic test cases.
 
@@ -35,7 +35,7 @@ Hors portée :
 
 ---
 
-## Propriétés de sécurité et de confidentialité intégrées (`v0.6.2`)
+## Propriétés de sécurité et de confidentialité intégrées (`v0.7.0`)
 
 - **Authentification fermée par défaut et comparaison à temps constant :** `apparie` compare des condensés SHA-256 via `crypto.subtle.timingSafeEqual` (aucune liste vide acceptée, aucun secret journalisé, aucun court-circuit révélant quel secret ou porteur a concordé). Longueur des jetons porteurs plafonnée à `MAX_LONGUEUR_PORTEUR` (512 caractères).
 - **Hygiène des journaux et porteurs d'authentification :** Le socle n'enregistre jamais `request.url` ni les jetons présentés en erreur (`decodeURIComponent` échoue silencieusement en refus fermé). Le porteur `?key=` reste optionnel dans `Porte` ; les connecteurs privilégient `Authorization: Bearer` partout où le client le supporte afin d'éviter l'inscription du jeton dans les journaux d'arête URL.

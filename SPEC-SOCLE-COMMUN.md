@@ -1,7 +1,7 @@
 # SPEC — Socle commun des connecteurs juridiques, et ouverture à la confraternité
 
 > **Destinataire : agents de développement.** Document d'architecture et de spécification. Il
-> vaut pour les trois dépôts — `MCP-Socle-Juridique`, `MCP-Legislation`, `MCP-Jurisprudence`.
+> vaut pour les trois dépôts — `MCP-Socle`, `MCP-Legislation`, `MCP-Jurisprudence`.
 > Les considérations, arbitrages et notes historiques d'ouverture sont archivés dans
 > `docs/archive/NOTE-OUVERTURE-PUBLIQUE.md`. Ici figurent les contrats.
 >
@@ -58,7 +58,7 @@ un motif à retrouver, jamais un motif à inventer.
 
 | # | Décision | Motif |
 |---|---|---|
-| S1 | Un troisième dépôt, **`MCP-Socle-Juridique`**, source unique de l'**identité** et du **transport MCP qui la porte**. | Deux implémentations du même protocole ne restent pas uniformes par discipline. **AMENDÉE le 2026-09-17** : la liste disait « le protocole, l'identité, la gouverne, le journal et la sortie structurée ». La sortie structurée en sort (S5 abandonnée, voir ci-dessous) ; la gouverne, le journal et le coffre restent des PHASES à venir et ne doivent pas figurer comme des responsabilités déjà tenues — leurs quatre répertoires vides ont été retirés. Le besoin d'origine était un intergiciel d'authentification ; le socle s'y tient. |
+| S1 | Un troisième dépôt, **`MCP-Socle`**, source unique de l'**identité** et du **transport MCP qui la porte**. | Deux implémentations du même protocole ne restent pas uniformes par discipline. **AMENDÉE le 2026-09-17** : la liste disait « le protocole, l'identité, la gouverne, le journal et la sortie structurée ». La sortie structurée en sort (S5 abandonnée, voir ci-dessous) ; la gouverne, le journal et le coffre restent des PHASES à venir et ne doivent pas figurer comme des responsabilités déjà tenues — leurs quatre répertoires vides ont été retirés. Le besoin d'origine était un intergiciel d'authentification ; le socle s'y tient. |
 | S2 | Le socle est une **dépendance de développement**, empaquetée par esbuild au déploiement. Jamais une dépendance d'exécution. | Préserve D2 au sens qui compte : du code à soi, versionné et signé, pas une surface Dependabot. |
 | S3 | Les deux Workers servent **`2026-07-28` en tête**, puis `2025-11-25` et `2025-06-18` en compatibilité. `2025-03-26` est retiré. | `2026-07-28` supprime les sessions, l'en-tête `Mcp-Session-Id` et la poignée `initialize` : le protocole est devenu sans état. D3 est devenu la norme. |
 | S4 | `legislation` **abandonne** `McpAgent`, `@modelcontextprotocol/sdk` et `agents`. | Corollaire de S3. Supprime aussi le coût d'écriture par session au Durable Object, qui a déjà épuisé un quota journalier au harnais d'évaluation. |
@@ -84,7 +84,7 @@ un motif à retrouver, jamais un motif à inventer.
 ## 2. Arborescence du socle
 
 ```
-MCP-Socle-Juridique/
+MCP-Socle/
 ├── src/
 │   ├── identite/             LA RAISON D'ÊTRE DU SOCLE
 │   │   ├── porteur.ts        extraction du jeton : Bearer | ?key= | segment de chemin ;

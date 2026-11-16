@@ -1,6 +1,6 @@
-# Socle commun des connecteurs juridiques
+# MCP-Socle — Socle commun des connecteurs MCP
 
-Code partagé par les deux connecteurs MCP de Poirier Lavoie avocat :
+Code partagé par les deux connecteurs MCP authentifiés de Poirier Lavoie avocat :
 
 - [`MCP-Legislation`](https://github.com/jpoirierlavoie/MCP-Legislation) — Législation du Québec et du Canada
 - [`MCP-Jurisprudence`](https://github.com/jpoirierlavoie/MCP-Jurisprudence) — Jurisprudence canadienne (collection CanLII)
@@ -18,7 +18,7 @@ déploiement :
 
 ```jsonc
 "devDependencies": {
-  "@poirierlavoie/socle-juridique": "github:jpoirierlavoie/MCP-Socle-Juridique#v0.6.2"
+  "@poirierlavoie/mcp-socle": "github:jpoirierlavoie/MCP-Socle#v0.7.0"
 }
 ```
 
@@ -51,7 +51,7 @@ Les tests s'exécutent dans `workerd` (`@cloudflare/vitest-pool-workers`) pour �
 | [`src/protocole/LISEZ-MOI.md`](src/protocole/LISEZ-MOI.md) | inventaire de `protocole/` (`rpc.ts`, `valide.ts`, `registre.ts`, `versions.ts`, `entetes.ts`, `meta.ts`, `decouverte.ts`, `http.ts`, `serveur.ts`) |
 | [`docs/archive/`](docs/archive/) | documents historiques d'ouverture et de planification (`NOTE-OUVERTURE-PUBLIQUE.md`, `FEUILLE-DE-ROUTE.md`, `PROCEDURES-MANUELLES.md`) |
 
-## État (`v0.6.2`)
+## État (`v0.7.0`)
 
 - **Livré (`src/identite/` et `src/protocole/`) :** extraction et appariement constant-time des
   porteurs (`MAX_LONGUEUR_PORTEUR = 512`), refus HTTP (`404`/`401`/`403`/`429`/`405`), enveloppe

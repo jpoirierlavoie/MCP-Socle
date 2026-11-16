@@ -29,13 +29,15 @@ function sansCommentaires(code: string): string {
 }
 
 describe("hygiène documentaire et manifeste", () => {
-  it("package.json déclare la version 0.6.2 et zéro dépendance d'exécution", () => {
+  it("package.json déclare le nom @poirierlavoie/mcp-socle, la version 0.7.0 et zéro dépendance d'exécution", () => {
     const pkg = JSON.parse(pkgRaw) as {
+      name: string;
       version: string;
       dependencies?: Record<string, string>;
       scripts?: Record<string, string>;
     };
-    expect(pkg.version).toBe("0.6.2");
+    expect(pkg.name).toBe("@poirierlavoie/mcp-socle");
+    expect(pkg.version).toBe("0.7.0");
     expect(Object.keys(pkg.dependencies ?? {})).toEqual([]);
     expect(pkg.scripts?.["type-check"]).toBe("tsc --noEmit");
     expect(pkg.scripts?.lint).toBe("biome check .");
@@ -46,7 +48,8 @@ describe("hygiène documentaire et manifeste", () => {
     const taille = new TextEncoder().encode(geminiMd).byteLength;
     expect(taille).toBeGreaterThan(200);
     expect(taille).toBeLessThan(24_000);
-    expect(geminiMd).toContain("# MCP-Socle-Juridique");
+    expect(geminiMd).toContain("# MCP-Socle");
+    expect(geminiMd).not.toContain("# MCP-Socle-Juridique");
   });
 
   it("la documentation active ne porte plus les anciens noms de dépôts ni d'étiquette périmée", () => {
@@ -54,13 +57,18 @@ describe("hygiène documentaire et manifeste", () => {
       expect(doc.length).toBeGreaterThan(100);
       expect(doc).not.toContain("MCP-Jurisprudence-Quebec");
       expect(doc).not.toContain("MCP-Legislation-Quebec");
+      expect(doc).not.toContain("MCP-Socle-Juridique");
+      expect(doc).not.toContain("socle-juridique");
+      expect(doc).not.toContain("pratique-civile-outils");
     }
-    expect(readmeMd).toContain("#v0.6.2");
-    expect(claudeMd).toContain("#v0.6.2");
+    expect(readmeMd).toContain("#v0.7.0");
+    expect(claudeMd).toContain("#v0.7.0");
     expect(readmeMd).not.toContain("#v0.1.0");
     expect(readmeMd).not.toContain("#v0.6.1");
+    expect(readmeMd).not.toContain("#v0.6.2");
     expect(claudeMd).not.toContain("#v0.5.0");
     expect(claudeMd).not.toContain("#v0.6.1");
+    expect(claudeMd).not.toContain("#v0.6.2");
   });
 
   it("les documents datés sont archivés sous docs/archive/ et absents de la racine", () => {
