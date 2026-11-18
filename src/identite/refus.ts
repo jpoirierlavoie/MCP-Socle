@@ -20,19 +20,122 @@ const JSON_HEADERS = { "Content-Type": "application/json; charset=utf-8" };
 
 export type FormeRefus = "404" | "401";
 
+export type CodeErreurBearerOAuth = "invalid_token" | "insufficient_scope";
+
+/**
+ * Paramètres optionnels de découverte OAuth 2.1 / RFC 9728 pour un refus `401`.
+ *
+ * Ignorés lorsque `forme === "404"` (monture directe `/mcp` sans oracle). Sur la monture
+ * dédiée OAuth (`/mcp/oauth`), `resourceMetadata` annonce la fiche RFC 9728 attendue par
+ * Gemini App, Gemini Enterprise et les connecteurs OAuth `claude.ai`.
+ */
+export interface OptionsRefus401 {
+  /** URL absolue HTTPS de la fiche `/.well-known/oauth-protected-resource/...` (RFC 9728). */
+  resourceMetadata?: string;
+  /** Portées requises, séparées par des espaces. */
+  scope?: string;
+  /** Code d'erreur RFC 6750 §3.1, uniquement si un porteur invalide ou insuffisant a été soumis. */
+  error?: CodeErreurBearerOAuth;
+  /** Description courte, exempte de tout secret ou contenu utilisateur. */
+  errorDescription?: string;
+}
+
+function translittererAscii(brut: string): string {
+  return brut
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/œ/g, "oe")
+    .replace(/Œ/g, "OE")
+    .replace(/æ/g, "ae")
+    .replace(/Æ/g, "AE");
+}
+
+function valeurGuillemeteeSaine(brut: string): string {
+  const normalise = translittererAscii(brut);
+  let propre = "";
+  for (let i = 0; i < normalise.length; i++) {
+    const code = normalise.charCodeAt(i);
+    if (code < 0x20 || code === 0x7f) {
+      propre += " ";
+      continue;
+    }
+    // Strictement ASCII imprimable (RFC 6750 §3 / Fetch Headers), hors guillemet et antislash.
+    if (code > 0x7e || code === 0x22 || code === 0x5c) continue;
+    propre += normalise[i];
+  }
+  return propre.replace(/\s+/g, " ").trim().slice(0, 512);
+}
+
+function urlRessourceMetadataSaine(brut: string): string | null {
+  const candidat = brut.trim();
+  if (candidat.length === 0 || candidat.length > 512) return null;
+  for (let i = 0; i < candidat.length; i++) {
+    const code = candidat.charCodeAt(i);
+    // Aucune espace, caractère de contrôle, guillemet ou antislash dans une URI RFC 9728.
+    if (code <= 0x20 || code > 0x7e || code === 0x22 || code === 0x5c) return null;
+  }
+  try {
+    const u = new URL(candidat);
+    if (
+      u.protocol !== "https:" ||
+      u.username !== "" ||
+      u.password !== "" ||
+      u.hash !== "" ||
+      u.search !== ""
+    ) {
+      return null;
+    }
+    return candidat;
+  } catch {
+    return null;
+  }
+}
+
+/** Construit la valeur de l'en-tête `WWW-Authenticate` conforme à RFC 6750 et RFC 9728. */
+export function construireEnteteBearer(options?: OptionsRefus401): string {
+  if (!options) return "Bearer";
+  const parametres: string[] = [];
+  if (options.resourceMetadata) {
+    const meta = urlRessourceMetadataSaine(options.resourceMetadata);
+    if (meta !== null) parametres.push(`resource_metadata="${meta}"`);
+  }
+  if (options.scope) {
+    const scope = valeurGuillemeteeSaine(options.scope.trim());
+    if (scope.length > 0) parametres.push(`scope="${scope}"`);
+  }
+  const codeErreurValide =
+    options.error === "invalid_token" || options.error === "insufficient_scope";
+  if (codeErreurValide) {
+    parametres.push(`error="${options.error}"`);
+    if (options.errorDescription) {
+      const desc = valeurGuillemeteeSaine(options.errorDescription.trim());
+      if (desc.length > 0) parametres.push(`error_description="${desc}"`);
+    }
+  }
+  return parametres.length > 0 ? `Bearer ${parametres.join(", ")}` : "Bearer";
+}
+
 /**
  * Refus d'authentification.
  *
- * ⚠ TOUS LES ÉCHECS RENDENT LA MÊME RÉPONSE. Jeton inconnu, expiré, révoqué, titulaire
- *   suspendu : même statut, même corps, et — c'est la partie que le code ne peut pas
- *   garantir seul — le même DÉLAI. Un écart de temps entre « jeton inconnu » et « jeton
- *   connu mais titulaire suspendu » rouvre l'énumération que le statut ferme.
+ * ⚠ TOUS LES ÉCHECS SUR UNE MÊME MONTURE RENDENT LA MÊME RÉPONSE. Jeton inconnu, expiré,
+ *   révoqué, titulaire suspendu : même statut, même corps, et — c'est la partie que le code
+ *   ne peut pas garantir seul — le même DÉLAI. Un écart de temps entre « jeton inconnu » et
+ *   « jeton connu mais titulaire suspendu » rouvre l'énumération que le statut ferme.
  */
-export function refuser(forme: FormeRefus, origin: string | null = null): Response {
+export function refuser(
+  forme: FormeRefus,
+  origin: string | null = null,
+  options401?: OptionsRefus401,
+): Response {
   if (forme === "401") {
     return new Response(JSON.stringify({ error: "unauthorized" }), {
       status: 401,
-      headers: { ...JSON_HEADERS, "WWW-Authenticate": "Bearer", ...corsHeaders(origin) },
+      headers: {
+        ...JSON_HEADERS,
+        "WWW-Authenticate": construireEnteteBearer(options401),
+        ...corsHeaders(origin),
+      },
     });
   }
   // Corps VIDE, et aucun en-tête qui annonce un point d'entrée MCP.

@@ -73,6 +73,19 @@ export function jsonResponse(body: unknown, status = 200, origin: string | null 
   });
 }
 
+const ENTETES_PREVOL_BASE = [
+  "Content-Type",
+  "Authorization",
+  "MCP-Protocol-Version",
+  "Mcp-Method",
+  "Mcp-Name",
+  "Mcp-Session-Id",
+  "Last-Event-ID",
+  "Accept",
+] as const;
+
+const MOTIF_NOM_ENTETE_HTTP = /^[A-Za-z0-9-]+$/;
+
 /**
  * Réponse au pré-vol CORS.
  *
@@ -86,14 +99,17 @@ export function jsonResponse(body: unknown, status = 200, origin: string | null 
  *   navigateur que comme un échec CORS opaque : le connecteur casserait sans que le motif
  *   soit lisible nulle part.
  */
-export function preflight(origin: string): Response {
+export function preflight(origin: string, entetesSupplementaires?: readonly string[]): Response {
+  const extras = (entetesSupplementaires ?? [])
+    .map((e) => e.trim())
+    .filter((e) => e.length > 0 && e.length <= 64 && MOTIF_NOM_ENTETE_HTTP.test(e));
+  const allowHeaders = [...new Set([...ENTETES_PREVOL_BASE, ...extras])].join(", ");
   return new Response(null, {
     status: 204,
     headers: {
       "Access-Control-Allow-Origin": origin,
       "Access-Control-Allow-Methods": "POST, OPTIONS",
-      "Access-Control-Allow-Headers":
-        "Content-Type, Authorization, MCP-Protocol-Version, Mcp-Method, Mcp-Name, Mcp-Session-Id, Last-Event-ID, Accept",
+      "Access-Control-Allow-Headers": allowHeaders,
       "Access-Control-Max-Age": "86400",
       Vary: "Origin",
     },

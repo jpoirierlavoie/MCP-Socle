@@ -46,6 +46,12 @@ export interface Porte {
    * en entier. `legislation` en a besoin tant qu'il réécrit l'URL ; `jurisprudence` non.
    */
   segmentBorne?: boolean;
+  /**
+   * Accepter ou non un jeton dans le segment de chemin `<mount>/<jeton>`. Défaut : `true`.
+   * Doit valoir `false` sur la monture OAuth 2.1 (`/mcp/oauth`), où RFC 6750 / RFC 9728
+   * n'admettent que l'en-tête `Authorization: Bearer`.
+   */
+  autoriserChemin?: boolean;
 }
 
 /**
@@ -106,6 +112,18 @@ export function bearerOf(request: Request): string | null {
 }
 
 /**
+ * Lit un porteur fourni dans un en-tête HTTP explicite (par exemple variante zéro-connaissance
+ * côté client maîtrisé, S11), borné à `MAX_LONGUEUR_PORTEUR`.
+ */
+export function porteurEntete(request: Request, nomEntete: string): string | null {
+  if (!nomEntete || nomEntete.trim().length === 0) return null;
+  const raw = request.headers.get(nomEntete);
+  if (!raw || raw.length > MAX_LONGUEUR_PORTEUR * 2) return null;
+  const valeur = raw.trim();
+  return valeur.length > 0 && valeur.length <= MAX_LONGUEUR_PORTEUR ? valeur : null;
+}
+
+/**
  * Les jetons PRÉSENTÉS par la requête — tous les porteurs, toutes leurs graphies
  * plausibles, sans aucune préséance entre eux, dédoublonnés.
  *
@@ -128,7 +146,7 @@ export function porteursPresentes(request: Request, url: URL, porte: Porte): str
   const candidats: (string | null)[] = [bearerOf(request)];
 
   const prefixe = `${porte.mount}/`;
-  if (url.pathname.startsWith(prefixe)) {
+  if (porte.autoriserChemin !== false && url.pathname.startsWith(prefixe)) {
     const brut = url.pathname.slice(prefixe.length);
     const rogne = sansBarresFinales(brut);
     const profond = rogne.includes("/");
@@ -164,43 +182,70 @@ export function secretsAdmis(env: Record<string, unknown>, porte: Porte): string
 }
 
 /**
+ * Rend le premier porteur présenté qui s'apparie à temps constant à l'un des secrets attendus, ou
+ * `null` si aucun ne correspond.
+ *
+ * ⚠ AUCUN COURT-CIRCUIT. `Promise.all` résout l'INTÉGRALITÉ du produit cartésien avant toute
+ *   lecture des verdicts booléens.
+ *
+ * ⚠ FERMÉ PAR DÉFAUT, DES DEUX CÔTÉS DU PRODUIT. Liste vide d'un côté OU de l'autre ⇒ produit
+ *   vide ⇒ `null`.
+ */
+export async function trouverPorteurApparie(
+  presentes: readonly string[],
+  attendus: readonly string[],
+): Promise<string | null> {
+  const paires = attendus.flatMap((attendu) =>
+    presentes.map((presente) => ({ presente, promesse: memeSecret(presente, attendu) })),
+  );
+  const verdicts = await Promise.all(paires.map((p) => p.promesse));
+  for (let i = 0; i < verdicts.length; i++) {
+    if (verdicts[i]) return paires[i]!.presente;
+  }
+  return null;
+}
+
+/**
  * L'un des jetons présentés est-il l'un des secrets admis ?
  *
- * ⚠ AUCUN COURT-CIRCUIT. `Promise.all` résout l'INTÉGRALITÉ du produit avant que `some` ne
- *   lise des booléens déjà calculés. Une chaîne de `||` sortirait au premier secret
- *   apparié, et le temps de réponse dirait alors LEQUEL a été présenté — c'est-à-dire QUEL
- *   CLIENT on est, à un tiers qui sonde.
- *
- * ⚠ FERMÉ PAR DÉFAUT, DES DEUX CÔTÉS DU PRODUIT. Liste vide d'un côté OU de l'autre ⇒
- *   produit vide ⇒ `some` rend faux ⇒ tout est refusé. « Aucun porteur présenté » se traite
- *   donc par la MÊME ligne que « aucun secret configuré » : le défaut fermé est structurel,
- *   au lieu de reposer sur une garde `if` qu'un remaniement pourrait laisser tomber.
+ * ⚠ AUCUN COURT-CIRCUIT. `Promise.all` résout l'INTÉGRALITÉ du produit avant que le verdict ne
+ *   soit rendu, et une liste vide d'un côté ou de l'autre échoue systématiquement fermé.
  */
 export async function apparie(
   presentes: readonly string[],
   attendus: readonly string[],
 ): Promise<boolean> {
-  const verdicts = await Promise.all(
-    attendus.flatMap((attendu) => presentes.map((presente) => memeSecret(presente, attendu))),
-  );
-  return verdicts.some(Boolean);
+  return (await trouverPorteurApparie(presentes, attendus)) !== null;
 }
 
 /**
- * Autorise (ou non) un appel sous le point de montage.
+ * Le chemin d'URL est-il structurellement admissible pour cette `Porte` ?
  *
- * Rend la requête à servir — URL normalisée sur le chemin de montage, jeton retiré du
- * chemin et de la requête — ou `null` si l'appel doit repartir en refus.
+ * Ferme deux contournements lorsque l'authentification aboutit par `Bearer` ou `?key=` :
+ * - sur `autoriserChemin: false` (`/mcp/oauth`), tout sous-chemin `/mcp/oauth/<x>` est refusé
+ *   (seuls `/mcp/oauth` et `/mcp/oauth/` sont admis) ;
+ * - sur `segmentBorne: true`, tout chemin profond `/mcp/a/b` est refusé même avec un `Bearer`
+ *   valide.
  */
-export async function ouvrir(
-  request: Request,
-  url: URL,
-  env: Record<string, unknown>,
-  porte: Porte,
-): Promise<Request | null> {
-  const presentes = porteursPresentes(request, url, porte);
-  if (!(await apparie(presentes, secretsAdmis(env, porte)))) return null;
+export function estCheminMontageAdmissible(pathname: string, porte: Porte): boolean {
+  const rogne = trimTrailingSlash(pathname);
+  if (rogne === porte.mount) return true;
+  const prefixe = `${porte.mount}/`;
+  if (!pathname.startsWith(prefixe)) return false;
+  if (porte.autoriserChemin === false) return false;
+  if (porte.segmentBorne === true) {
+    const reste = sansBarresFinales(pathname.slice(prefixe.length));
+    if (reste.includes("/")) return false;
+  }
+  return true;
+}
 
+/**
+ * Normalise l'URL d'une requête autorisée sur son chemin de montage, en retirant le segment
+ * de jeton éventuel ainsi que `queryKey`, tout en conservant l'instance `Request` intacte sur
+ * le chemin chaud.
+ */
+export function normaliserUrlMontage(request: Request, url: URL, porte: Porte): Request {
   // La normalisation teste `url.pathname`, PAS le chemin rogné : calculée sur le chemin
   // rogné, la condition était satisfaite par un `/mcp/` nu, qui repartait donc SANS
   // normalisation — le transport ne reconnaissait pas le chemin et rendait 404. MESURÉ le
@@ -218,10 +263,46 @@ export async function ouvrir(
   return new Request(normalise.toString(), request);
 }
 
+/**
+ * Autorise (ou non) un appel sous le point de montage.
+ *
+ * Rend la requête à servir — URL normalisée sur le chemin de montage, jeton retiré du
+ * chemin et de la requête — ou `null` si l'appel doit repartir en refus.
+ */
+export async function ouvrir(
+  request: Request,
+  url: URL,
+  env: Record<string, unknown>,
+  porte: Porte,
+): Promise<Request | null> {
+  const presentes = porteursPresentes(request, url, porte);
+  const ok = await apparie(presentes, secretsAdmis(env, porte));
+  if (!ok || !estCheminMontageAdmissible(url.pathname, porte)) return null;
+  return normaliserUrlMontage(request, url, porte);
+}
+
 // ── Fabrique de jetons (correctif A2) ───────────────────────────────────────────────────
 
 /** Longueur d'un jeton frappé : 32 octets en base64url, sans remplissage. */
 export const LONGUEUR_JETON = 43;
+
+/** Longueur de la queue de reconnaissance affichée en console (§4.1). */
+export const LONGUEUR_QUEUE_JETON = 6;
+
+const MOTIF_JETON_FRAPPE = /^[A-Za-z0-9_-]{43}$/;
+
+/** Vérifie en temps constant borné qu'une chaîne épouse le format exact de `frapperJeton()`. */
+export function estJetonFrappe(candidat: string): boolean {
+  return candidat.length === LONGUEUR_JETON && MOTIF_JETON_FRAPPE.test(candidat);
+}
+
+/** Extrait les 6 derniers caractères d'un jeton frappé pour reconnaissance sans divulgation. */
+export function queueJeton(jeton: string): string {
+  if (!estJetonFrappe(jeton)) {
+    throw new Error("Format de jeton invalide pour extraction de queue.");
+  }
+  return jeton.slice(-LONGUEUR_QUEUE_JETON);
+}
 
 /**
  * LA seule fabrique de jetons du dispositif (correctif A2 de la spécification).

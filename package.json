@@ -1,6 +1,6 @@
 {
   "name": "@poirierlavoie/mcp-socle",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "private": true,
   "description": "Socle commun des connecteurs MCP — AUTHENTIFICATION et le transport MCP qui la porte. Dépendance de DÉVELOPPEMENT, empaquetée au déploiement : jamais une dépendance d'exécution (S2).",
   "license": "CC-BY-NC-SA-4.0",
@@ -21,11 +21,12 @@
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "audit": "node scripts/verifier-audit.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.6.7",
-    "@cloudflare/vitest-pool-workers": "^0.23.0",
+    "@cloudflare/vitest-plugin": "^1.8.4",
     "@cloudflare/workers-types": "^5.20261115.1",
     "typescript": "^7.0.2",
     "vitest": "^4.1.12"
