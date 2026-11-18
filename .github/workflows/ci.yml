@@ -38,4 +38,4 @@ jobs:
         run: npx vitest run
 
       - name: Audit des dépendances
-        run: npm audit
+        run: npm run audit

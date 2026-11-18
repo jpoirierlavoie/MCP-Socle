@@ -1,1022 +1,538 @@
-# SPEC — Socle commun des connecteurs juridiques, et ouverture à la confraternité
+# SPEC — Socle commun des connecteurs MCP, ouverture à la confraternité et modes Deep Research
 
-> **Destinataire : agents de développement.** Document d'architecture et de spécification. Il
-> vaut pour les trois dépôts — `MCP-Socle`, `MCP-Legislation`, `MCP-Jurisprudence`.
-> Les considérations, arbitrages et notes historiques d'ouverture sont archivés dans
-> `docs/archive/NOTE-OUVERTURE-PUBLIQUE.md`. Ici figurent les contrats.
+> **Destinataire : agents de développement.** Document d'architecture et de spécification maître. Il
+> gouverne quatre dépôts d'infrastructure — `MCP-Socle`, `MCP-Acces` (`acces.poirierlavoie.ca`),
+> `MCP-Legislation` (`legislation.poirierlavoie.ca`, alias `lois`) et `MCP-Jurisprudence`
+> (`jurisprudence.poirierlavoie.ca`, alias `juris`) — en cohérence avec `MCP-Outils`
+> (`outils.poirierlavoie.ca`, alias `outils`) et le greffon cadre `droit-civil-quebecois` (`v2.0.2`).
+> Les considérations historiques initiales sont archivées dans `docs/archive/NOTE-OUVERTURE-PUBLIQUE.md`.
+> Ici figurent les contrats exécutoires.
 >
-> **Statut d'implémentation (`v0.6.0`) :** la fondation transport/protocole et l'authentification
-> par porteur partagé (`src/identite/{porteur,refus}.ts`, `src/protocole/*`, `servirRequeteMcp`,
-> SEP-2127 `/mcp/server-card`) sont livrées. L'ouverture publique multilocataire (§4 `titulaire` /
-> `jeton` D1, `Principal`, `DepotJetons`, consoles d'inscription et OAuth / RFC 9728) demeure
-> reportée à une phase ultérieure.
+> **Statut d'implémentation (`@poirierlavoie/mcp-socle` `v0.8.0` — Phase 1 livrée le 2026-11-18) :**
+> - **Livré dans `MCP-Socle` (`v0.8.0`) :** transport MCP `Streamable HTTP` sans état (`2026-07-28`,
+>   `2025-11-25`, `2025-06-18`, `2025-03-26`), porteurs à temps constant (`Bearer`, `?key=`,
+>   `/mcp/<jeton>`, `porteurEntete`), résolution multilocataire D1 (`titulaire` / `jeton` avec
+>   portée unifiée `les_deux` ou par connecteur), coffre chiffré par enveloppe (`HKDF-SHA256` +
+>   `AES-256-GCM` à fermeture stricte sans retour du texte clair), double posture de refus (`404`
+>   sur `/mcp` et `401` RFC 9728 sur `/mcp/oauth`), primitives OAuth 2.1 (RFC 9728, RFC 8414,
+>   PKCE `S256` obligatoire, validation `redirect_uri` et CIMD anti-SSRF), gouverne à deux étages
+>   compatible avec les rafales **Deep Research** (quarantaine des IP en échec séparée du trafic
+>   authentifié + débit par `titulaire_id` + quotas journaliers par classe), télémétrie technique
+>   sans contenu (minute UTC, rétention 90 jours, garde SQL `verifierSchemaSansContenuIdentifiant`)
+>   et autorisation complémentaire de pratique professionnelle du droit dans `LICENSE`.
+> - **À livrer dans les dépôts aval (Phases 2 à 4, §13) :** Worker portail `MCP-Acces` et base D1
+>   partagée `mcp-identite` (Phase 2), branchement multilocataire + double monture `/mcp` &
+>   `/mcp/oauth` + BYOK strict dans `MCP-Legislation` et `MCP-Jurisprudence` (Phase 3), puis
+>   alignement documentaire et validation E2E en direct dans `droit-civil-quebecois` et
+>   `MCP-Outils` (Phase 4).
 >
-> **Paramètres arrêtés.** Service gratuit. Admission par demande + revue humaine de l'exploitant.
-> Aucune facturation, aucune intégration de paiement.
->
-> **Portes bloquantes.** La règle est énoncée une seule fois, au dernier paragraphe de la §8
-> de la note : les phases 1 et 5 sont livrables sans les déterminations préalables ; les
-> phases 2, 3, 4 et 6 en dépendent. Ne pas la reformuler ici.
+> **Paramètres arrêtés.** Service gratuit réservé exclusivement aux membres actifs en règle du
+> Barreau du Québec. Admission par demande préalable avec vérification automatisée du courriel,
+> épreuve en direct obligatoire d'une clé API CanLII valide du demandeur, puis revue humaine
+> manuelle au *Bottin des avocats*. Aucune facturation, aucune revente commerciale.
 
 ---
 
-## 0. État des lieux, en un tableau
+## 0. État des lieux et matrice des surfaces clientes (incluant Deep Research)
 
-Ce que les deux dépôts font aujourd'hui. Toute divergence non listée ici est à traiter comme
-une découverte, pas comme un oubli du présent document.
+> ⚠ **RELEVÉ DU 2026-11-18.** Une ligne d'état sans date de relevé ne se croit pas — elle se
+> vérifie contre le disque avant usage (leçon du 2026-09-18 où cinq lignes non datées avaient
+> dérivé en silence).
 
-> ⚠ **RELEVÉ DU 2026-09-18.** Ce tableau décrit un ÉTAT, donc il se périme, et il s'est
-> périmé : au relevé de ce jour, **cinq de ses lignes étaient fausses** — transport,
-> authentification, défaut sans secret, sortie, limitation de débit — et aucune ne
-> concernait le sujet dont on discutait alors. Deux d'entre elles portaient sur l'ACCÈS.
-> Le défaut n'est pas d'avoir eu tort : c'est d'avoir écrit un état sans date, si bien que
-> rien ne signalait qu'il fallait le revérifier. **Une ligne sans date de relevé ne se
-> croit pas** — elle se vérifie contre le disque avant usage.
+### 0.1 État technique comparé des Workers MCP avant bascule aval (Phase 3)
 
-| | `legislation` (qclaw) | `jurisprudence` (canlii) |
-|---|---|---|
-| Cadriciel | `@modelcontextprotocol/sdk` + `agents` (`McpAgent`) | aucun — routeur `fetch` écrit à la main (D2) |
-| Transport | Streamable HTTP **sans état** — routeur du socle, `SOCLE: "true"` posé en production. Le Durable Object `QclawMCP` reste exporté et lié, **non routé**, comme ancre de retour | Streamable HTTP, **JSON sans état** (D3) |
-| Versions servies | celles du SDK | `2025-06-18`, `2025-03-26` |
-| Authentification | `MCP_TOKEN` **et** `MCP_TOKEN_VEILLE` — 3 porteurs : `?key=`, `Bearer`, segment de chemin | `MCP_SHARED_SECRET` seul (`_ATHENA` **retiré** le 2026-09-17, son appelant ayant disparu) — **3 porteurs depuis le 2026-09-17** : `?key=` y a été AJOUTÉ, seule forme qui survive au formulaire de connecteur de claude.ai (S7) |
-| Défaut sans secret | **FERMÉ depuis le 2026-08-27**, aligné sur le jumeau. ⚠ La soupape R8 **n'existe plus** : supprimer les secrets ne rouvre pas, cela FERME définitivement (liste vide ⇒ aucune comparaison ⇒ 404 sur tout). Seul remède réel : `wrangler rollback` | **FERMÉ** : liste vide ⇒ tout refusé, épinglé par un test |
-| Refus | **404**, jamais 401 — motif **raisonné, non mesuré** (voir S8) | 401 |
-| Base | D1 `qclaw` (+ Vectorize, Workers AI si `HYBRID_SEARCH`) | D1 `canlii` (index **et** cache, D5/D6) |
-| Sortie | prose **+ `structuredContent` PLAT** sur les dix outils, sans `outputSchema` ni contrat publié. L'enveloppe de S5 a été servie une journée puis **retirée le 2026-09-17**, sur mesure | prose seule — **D4 et invariant 4**, réexaminé et maintenu le 2026-07-23, **et CONFIRMÉ le 2026-09-17** par la mesure faite chez le jumeau |
-| Journal | `search_log(ts, tool, query, …)` — `query` en clair, horodaté **à la seconde**, à chaque appel de `search_text` et `find_relevant` | `search_log` (chaînes de citation soumises), `api_usage` |
-| Limitation de débit | `RATE_LIMITER`, clé = **`CF-Connecting-IP`**, **300/min** — seuil MESURÉ : `npm run evals` émet 61 requêtes en 3 s, donc 60/min ferait tomber le harnais | `RATE_LIMITER` (§9.3), clé = **`CF-Connecting-IP`**, 60/min, plafond dans `wrangler.jsonc` |
-| Page publique | `GET /`, cache d'arête à clé fixe | `GET /`, dérivée du registre (invariant 19) |
-| Clef tierce | aucune | `CANLII_API_KEY` de l'exploitant |
-| WAF de zone | bloque les rafales de POST non-navigateur sur le domaine personnalisé (invariant 9) | à vérifier |
+| Dimension | `MCP-Legislation` (`lois`, 10 outils) | `MCP-Jurisprudence` (`juris`, 10 outils) | Cible Phase 3 (`v0.8.0`) |
+|---|---|---|---|
+| Transport | `Streamable HTTP` sans état via `MCP-Socle` (`#v0.7.0`) | `Streamable HTTP` sans état via `MCP-Socle` (`#v0.7.0`) | `#v0.8.0` sur les deux + `MCP-Acces` |
+| Versions servies | `2026-07-28`, `2025-11-25`, `2025-06-18`, `2025-03-26` | `2026-07-28`, `2025-11-25`, `2025-06-18`, `2025-03-26` | Inchangé (`initialize` toujours exempté d'en-tête) |
+| Porteurs `/mcp` | `Bearer`, `?key=`, `/mcp/<jeton>` (`MCP_TOKEN`, `MCP_TOKEN_VEILLE`) | `Bearer`, `?key=`, `/mcp/<jeton>` (`MCP_SHARED_SECRET`) | Jetons D1 `DB_IDENTITE` (`les_deux` ou dédiés) + `MCP_TOKEN_VEILLE` CI |
+| Monture OAuth 2.1 | Absente | Absente | `/mcp/oauth` (`Bearer` seul, `401` + RFC 9728 vers `acces.poirierlavoie.ca`) |
+| Refus sur `/mcp` | `404` à corps vide, sans `WWW-Authenticate` | `401` + `WWW-Authenticate: Bearer` | **Uniformisé en `404` à corps vide** sur `/mcp` ; `401` RFC 9728 sur `/mcp/oauth` |
+| Clé CanLII | Sans objet | `CANLII_API_KEY` de l'exploitant | **BYOK strict** (`X-Clef-CanLII` -> `coffre_clef` -> `CLEF_ABSENTE` HTTP `200` `isError: true`), zéro repli exploitant |
+| Cache D1 métier | D1 `legislation` + Vectorize + Workers AI (`HYBRID_SEARCH`) | D1 `canlii` (`cases`, `cases_fts`, `citator_*`) | Cache D1 global partagé sous garde BYOK active, `fetched_at` exact masqué au rendu ; `hybride_permis` désarmable par titulaire |
+| Journaux & observabilité | `search_log` en clair + `observability` | `search_log` + `api_usage` + `observability` | **`search_log` retirée/archivée**, `forme_requete` abandonnée, `observability` / `invocation_logs` **désactivées** (`false`) ; seuls `compteur_jour` et `evenement_technique` (minute, 90 j) dans `DB_IDENTITE` |
+| Débit d'arête | `RATE_LIMITER` sur `CF-Connecting-IP` (`300/min`, `namespace_id` `"1001"`) | `RATE_LIMITER` sur `CF-Connecting-IP` (`60/min`, `namespace_id` `"1001"`) | 4 liaisons à `namespace_id` distincts par Worker : quarantaine d'échecs IP (`20/min`) + plafond rafale pré-D1 (`600/min`) + disjoncteur `"echecs"` (`300/min`) + débit par `titulaire_id` (`300/min` `lois`, `180/min` `juris`) |
+
+### 0.2 Matrice des plateformes clientes et modes de recherche approfondie (*Deep Research*)
+
+Ni **Claude Research** ni **Gemini Deep Research** n'exigent de façades d'outils `search`/`fetch`
+artificielles : tous deux découvrent et invoquent directement les **32 outils existants** (`10`
+`lois`, `10` `juris`, `12` `outils`, bien en deçà du plafond de `100` outils/serveur de Gemini
+Enterprise et sous la limite stricte de `<= 64` caractères d'identifiant composé).
+
+| Surface cliente / Mode | Monture cible | Mécanisme d'authentification | Compétences (`SKILL.md`) | Exigences spécifiques d'infrastructure |
+|---|---|---|---|---|
+| **Claude Code & Claude Desktop** (`.mcp.json`) | `/mcp` (`404` sur échec) | `Authorization: Bearer <jeton>` (`les_deux` = 1 secret possible) + `X-Clef-CanLII` optionnel | Actives (greffon local) | Réglage WAF de zone pour rafales `POST` serveur à serveur |
+| **Google Antigravity** (`/boost`, `/goal`, sous-agent `research`) & **Gemini CLI** | `/mcp` (`404` sur échec) | `Authorization: Bearer <jeton>` (`sensitive: true`, `contextFileName: []`) + `X-Clef-CanLII` optionnel | Actives (`droit-civil-quebecois`) | Plafond composé max `52/64` car. (zéro troncature) |
+| **Claude Research** (`claude.ai` / Claude for Work — connecteur `?key=`) | `/mcp?key=<jeton>` (`404` sur échec) | Paramètre `?key=<jeton>` (poser l'URL complète **avant** la première sonde) | Actives (importer `skills/`) | Outils en lecture seule réglés sur *Always allow* ; rafales depuis IP partagées Anthropic |
+| **Claude Research** (`claude.ai` — ouverture multilocataire OAuth) | `/mcp/oauth` (`401` RFC 9728) | **OAuth 2.1 + PKCE `S256`** via `acces.poirierlavoie.ca` (`URIS_REDIRECTION_CLAUDE`, CIMD ou client pré-inscrit) | Actives | Émet un `jeton` standard dans `DB_IDENTITE` |
+| **Gemini API Deep Research** (`deep-research-preview-04-2026`, `deep-research-max-preview-04-2026`) & **Sandboxes** (`antigravity-preview-09-2026`) | `/mcp` (`404` sur échec) | `"type": "mcp_server"` + `Authorization: Bearer` ou `POST /credentials` | Préambule `SAFETY-KERNEL` injecté dans `input` (§3.4) | Exige `store=True` avec `background=True` (requêtes anonymisées uniquement) ; rafales depuis IP partagées Google |
+| **Gemini App** (`gemini.google.com`) & **Gemini Enterprise** (Vertex AI) | `/mcp/oauth` (`401` RFC 9728) | **OAuth 2.1 + PKCE `S256`** obligatoire (aucun support de `?key=` ni de `Bearer` statique utilisateur) | Configuration d'espace de travail | Découverte `/.well-known/oauth-protected-resource/mcp/oauth` -> `acces.poirierlavoie.ca/.well-known/oauth-authorization-server` |
 
 ---
 
-## 1. Décisions d'architecture
-
-Le format est celui de `SPEC_CANLII_MCP.md` : la décision, puis le motif. Un motif absent est
-un motif à retrouver, jamais un motif à inventer.
+## 1. Décisions d'architecture (`S1` à `S23`)
 
 | # | Décision | Motif |
 |---|---|---|
-| S1 | Un troisième dépôt, **`MCP-Socle`**, source unique de l'**identité** et du **transport MCP qui la porte**. | Deux implémentations du même protocole ne restent pas uniformes par discipline. **AMENDÉE le 2026-09-17** : la liste disait « le protocole, l'identité, la gouverne, le journal et la sortie structurée ». La sortie structurée en sort (S5 abandonnée, voir ci-dessous) ; la gouverne, le journal et le coffre restent des PHASES à venir et ne doivent pas figurer comme des responsabilités déjà tenues — leurs quatre répertoires vides ont été retirés. Le besoin d'origine était un intergiciel d'authentification ; le socle s'y tient. |
-| S2 | Le socle est une **dépendance de développement**, empaquetée par esbuild au déploiement. Jamais une dépendance d'exécution. | Préserve D2 au sens qui compte : du code à soi, versionné et signé, pas une surface Dependabot. |
-| S3 | Les deux Workers servent **`2026-07-28` en tête**, puis `2025-11-25` et `2025-06-18` en compatibilité. `2025-03-26` est retiré. | `2026-07-28` supprime les sessions, l'en-tête `Mcp-Session-Id` et la poignée `initialize` : le protocole est devenu sans état. D3 est devenu la norme. |
-| S4 | `legislation` **abandonne** `McpAgent`, `@modelcontextprotocol/sdk` et `agents`. | Corollaire de S3. Supprime aussi le coût d'écriture par session au Durable Object, qui a déjà épuisé un quota journalier au harnais d'évaluation. |
-| S5 | ~~**Sortie double** partout~~ — **ABANDONNÉE le 2026-09-17, sur mesure.** `legislation` l'a servie en production une journée : `tools/list` passait de 12 279 à 43 145 octets (~3 070 → ~10 786 jetons **par session**), dont 78 % n'étaient pas de la prose utile mais le squelette d'enveloppe répété dans les dix schémas ; et l'enveloppe pesait 27 % de la réponse de `get_article`, soit 72 % de la taille des données qu'elle entourait. Le tout pour publier un contrat à l'intention d'un lecteur de schémas qui n'existe pas : le lecteur réel est un modèle, qui lit la prose française, et le destinataire est un praticien qui connaît déjà les réserves. L'**invariant 4 de `jurisprudence` n'est donc PAS renversé** — il est confirmé, et sa condition (1), « un consommateur identifié, qui existe et LE DEMANDE », reste le bon critère parce qu'elle est falsifiable, ce que « partout » n'était pas. Le module `sortie/` est retiré du socle. Texte d'origine conservé ci-dessous pour mémoire. ~~Sortie double : prose française dans `content`, plus `structuredContent` validé contre un `outputSchema` publié. | D4 est **amendée** ; l'**invariant 4 de `jurisprudence` est RENVERSÉ** — et il faut le dire, parce qu'il a été réexaminé et maintenu le 2026-07-23. Son mode de panne est réel : un client qui reçoit un objet typé laisse tomber la prose, la réserve part avec elle, et `test/garde.test.ts` reste vert. La réponse n'est pas « ça n'arrivera pas », c'est le champ `gardes` de la §8.1, **non vide par obligation de compilation** quand une réserve s'applique. La solution de rechange que l'invariant prescrivait — un paramètre `format` dont la charge utile porterait `avertissement` — est écartée : elle laisse le modèle choisir de ne pas recevoir la réserve, et un tiers ne peut pas construire sur un schéma optionnel. **Écart assumé** au surplus : `2026-07-28` recommande (SHOULD) de renvoyer aussi le JSON sérialisé dans un bloc `TextContent` ; on ne le fait pas, parce que le bloc textuel est réservé à la prose qui porte la réserve. À consigner, comme S8. |
-| S6 | Identité **par titulaire**. Un enregistrement `titulaire` par avocat admis ; un ou plusieurs `jeton` par titulaire, révocables séparément. | Sans identité par titulaire, l'exigence 3 est inexécutable : on ne limite pas ce qu'on ne distingue pas. |
-| S7 | Le jeton voyage par `Authorization: Bearer`, `?key=` **et** segment de chemin — les trois, jusqu'à mesure contraire. | Fait de production : `?key=` est la seule forme qui a survécu au formulaire du connecteur claude.ai (juillet 2026). À re-mesurer, jamais à présumer. |
-| S8 | Un refus d'authentification répond **404**, sans `WWW-Authenticate`. | Posture existante de `legislation`, conservée pour **un seul** motif tenable : ne pas servir d'oracle sur l'existence d'un compte. Le motif souvent invoqué — « le 401 déclenche une découverte OAuth qui se coince » — **n'est pas mesuré** : les deux incidents enregistrés (2026-07-23, 2026-07-25) sont des **404** qui ont poussé le connecteur dans cette découverte, la seconde fois irréversiblement, un client MCP lisant un 404 comme « ce serveur exige une authentification ». Le 404 n'immunise donc de rien. Écart **assumé et consigné** à la spécification, qui exige les métadonnées de ressource protégée et un 401 ; à réexaminer sur mesure réelle, et non sur cette inférence. |
-| S9 | OAuth 2.1 est une **phase ultérieure conditionnée à une mesure**, pas un préalable. | L'enregistrement dynamique de clients vient d'être déprécié au profit des *Client ID Metadata Documents* : bâtir dessus aujourd'hui serait bâtir sur du sortant. |
-| S10 | La clef CanLII du titulaire vit dans un **coffre** chiffré par enveloppe, posé par une console web authentifiée. **Jamais** par un outil MCP, **jamais** en paramètre d'outil. | Un paramètre d'outil est rempli par le modèle et figure dans le contexte, l'historique et les journaux du client. `x-mcp-header` miroite un paramètre d'outil : à écarter pour un secret. |
-| S11 | En-tête `X-Clef-CanLII` accepté en **variante zéro-connaissance** pour les clients maîtrisés. | Un confrère maximaliste doit pouvoir ne rien déposer. Prime sur le coffre quand les deux sont présents. |
-| S12 | **Aucune retombée** sur la clef de l'exploitant. Sans clef, les outils `canlii_*` rendent `CLEF_ABSENTE`. L'exploitant est un titulaire comme les autres. | L'uniformité au sens fort, et la seule protection sûre du quota personnel. |
-| S13 | **Deux plans de journal, structurellement séparés.** `evenement_technique` porte le titulaire et aucun contenu. `forme_requete` porte une forme et aucun titulaire. Aucune table ne porte les deux. | Seule façon de servir ensemble l'exigence 1 et l'exigence 3. Invariant porté par les **types** et par un test de garde sur le schéma, jamais par la vigilance. |
-| S14 | Le plan de contenu ne conserve qu'une **forme expurgée** — citation normalisée, noms de parties remplacés par `[NOM]` — agrégée au jour et comptée. | Suffit au réglage de l'analyseur ; ne permet pas de reconstituer l'intérêt de recherche d'un confrère. |
-| S15 | Limitation en trois étages : débit à l'arête par titulaire, quotas journaliers par classe d'outil, score de comportement nocturne. **Le trafic AUTHENTIFIÉ n'est jamais limité par adresse IP** ; le trafic dont l'authentification a ÉCHOUÉ l'est, et ne peut l'être autrement. | Deux problèmes distincts, longtemps confondus ici. Pour un titulaire connu, le client est claude.ai : l'adresse source est celle d'Anthropic, donc limiter par IP punirait tout le monde et n'attribuerait rien. Mais celui qui **devine** un jeton n'est pas encore un titulaire, et il appelle depuis SA propre adresse : c'est la seule chose stable qu'il présente. Voir §6.1, correctif A1. |
-| S16 | La dégradation vers `limite` est **automatique** ; `suspendu` et `revoque` sont **humaines**, motivées, notifiées, avec voie de rétablissement. | Ce sont des avocats. Une coupure opaque en cours de mandat n'est ni tenable ni défendable. |
-| S17 | Cache CanLII : **partagé** pour le répertoire des bases ; **cloisonné par titulaire et à durée bornée** pour les fiches de décision, jusqu'à détermination écrite de CanLII. | Le répertoire est de la donnée de référence qu'aucune clef ne possède ; une fiche est tirée de la collection sous la clef d'un licencié. |
-| S18 | Identifiants **frappés sous le domaine du cabinet et déréférençables**, sur le patron FRBR d'Akoma Ntoso. Aucun identifiant frappé sur la donnée d'autrui. | Aucune autorité canadienne n'a enregistré d'espace `urn:lex` ; ELI est européen. Pour la jurisprudence, les identifiants de CanLII font autorité : les reprendre tels quels. |
-| S19 | La recherche hybride (Workers AI, Vectorize) est **désarmable par titulaire**, et déclarée dans la fiche de conformité. | Elle envoie le texte de la requête à un tiers. C'est la fuite la moins visible du dispositif. |
-| S20 | Toute documentation de gouverne — quotas, durées de conservation, **liste** des signaux de comportement — **dérive du code**, comme la page dérive du registre (invariant 19). **Exception unique et nommée** : les valeurs de franchissement des signaux (§6.3) vivent dans un secret, ne sont ni versionnées ni publiées, et ne sont donc dérivées de rien. | Une valeur recopiée devient fausse sans que rien n'échoue : c'est le mode de panne que ces dépôts combattent partout ailleurs. Mais les trois dépôts sont **publics**, et un seuil de détection versionné est un seuil publié — donc un seuil contournable. La dérivation s'arrête là, et l'exception est écrite ici pour qu'on ne la découvre pas. |
+| S1 | Un dépôt partagé, **`MCP-Socle`** (`@poirierlavoie/mcp-socle`), source unique du **protocole MCP sans état**, de l'**identité / OAuth 2.1 / coffre** et des **primitives de gouverne et de télémétrie sans contenu**, sans aucun concept juridique. | **AMENDÉE les 2026-09-17 et 2026-11-18.** Trois Workers (`MCP-Acces`, `MCP-Legislation`, `MCP-Jurisprudence`) partagent la même base D1 `DB_IDENTITE`, la même enveloppe cryptographique de coffre et les mêmes contrats OAuth 2.1 / quotas : dupliquer ces primitives dans trois dépôts garantirait une dérive de sécurité. Le socle reste 100 % agnostique du domaine juridique (vérifié par `test/doc.test.ts`). |
+| S2 | Le socle est une **dépendance de développement**, empaquetée par `esbuild` au déploiement, par étiquette git immuable (`#v0.8.0`). Jamais une dépendance d'exécution. | Zéro dépendance `dependencies` dans les Workers déployés ; code audité, versionné et figé par tag semver immuable. |
+| S3 | Les Workers servent **`2026-07-28` en tête**, puis `2025-11-25`, `2025-06-18` et `2025-03-26` (tant qu'un client ou script de veille omet l'en-tête). | Protocole sans état : ni session, ni `Mcp-Session-Id`, ni Durable Object routé. |
+| S4 | `MCP-Legislation` opère hors `McpAgent`, `@modelcontextprotocol/sdk` et Durable Object. | Supprime l'état par session et le coût de stockage par poignée. |
+| S5 | **Sortie double partout — ABANDONNÉE le 2026-09-17 sur mesure.** | Mesuré en production : `tools/list` passait de 12 279 à 43 145 octets (~3 070 à ~10 786 jetons par session). `MCP-Jurisprudence` demeure en prose seule ; `MCP-Legislation` conserve sa `structuredContent` plate existante sans `outputSchema`. |
+| S6 | **Identité par titulaire dans une base D1 unique (`mcp-identite` / `DB_IDENTITE`)**, liée à `MCP-Acces`, `MCP-Legislation` et `MCP-Jurisprudence`, avec **portée de jeton (`portee`)**. | **AMENDÉE le 2026-11-18.** Une seule base D1 d'identité évite toute désynchronisation de révocation ou de quota entre connecteurs. La portée vaut **`les_deux` par défaut** (un seul secret suffit dans les greffons locaux) avec option de cloisonnement par connecteur (`legislation` ou `jurisprudence`) à l'émission dans `/moi` ou via `scope` OAuth 2.1. |
+| S7 | Sur `/mcp`, le jeton voyage par `Authorization: Bearer`, `?key=` **et** segment de chemin `/mcp/<jeton>` ; sur `/mcp/oauth`, seul `Authorization: Bearer` est admis. | Préserve les connecteurs `?key=` existants de `claude.ai` et les greffons CLI sur `/mcp`, tout en respectant l'interdiction OAuth 2.1 des jetons en paramètre d'URL sur `/mcp/oauth`. |
+| S8 | **Double monture et parité de refus (`404` sur `/mcp`, `401` RFC 9728 sur `/mcp/oauth`).** | **AMENDÉE le 2026-11-18.** Sur `/mcp`, les deux connecteurs sont **uniformisés en HTTP `404` à corps vide sans `WWW-Authenticate`** pour tout jeton absent, inconnu, expiré, révoqué, hors portée ou rattaché à un titulaire non servi : zéro oracle d'existence et zéro bascule OAuth intempestive dans les CLI/API à jeton statique. Sur `/mcp/oauth`, tout défaut d'authentification répond **HTTP `401` + `WWW-Authenticate: Bearer resource_metadata="https://<hote>/.well-known/oauth-protected-resource/mcp/oauth"`**, débloquant la découverte standard exigée par Gemini App, Gemini Enterprise et Claude Research multilocataire. Les refus métier (`CLEF_ABSENTE`, `CLEF_REFUSEE`, `QUOTA_EPUISE`) voyagent toujours en **HTTP `200` (`isError: true`)** pour rester lisibles par l'agent. |
+| S9 | **OAuth 2.1 + PKCE `S256` + RFC 9728 / RFC 8414** servis par `MCP-Acces` (`acces.poirierlavoie.ca`), avec **CIMD** et clients pré-inscrits (sans DCR ouvert). | **AMENDÉE le 2026-11-18.** Obligatoire pour **Gemini App (`gemini.google.com`)** et **Gemini Enterprise (Vertex AI)**, et recommandé pour l'ouverture multilocataire de `claude.ai`. L'usage de *Client ID Metadata Documents* (`estClientIdMetadonneesValide`, protégé contre le SSRF) et de clients pré-inscrits évite l'enregistrement dynamique ouvert (DCR). Le flux OAuth émet un jeton opaque `frapperJeton()` standard stocké dans `DB_IDENTITE.jeton`. |
+| S10 | **Clé API CanLII obligatoire dès `/demande`**, éprouvée en direct et chiffrée par enveloppe (`HKDF-SHA256` + `AES-256-GCM`) dans `DB_IDENTITE.coffre_clef`. **Jamais** en paramètre d'outil MCP. | **AMENDÉE le 2026-11-18.** Tout candidat doit fournir une clé API CanLII fonctionnelle lors de sa demande initiale avant d'obtenir accès à Législation ou Jurisprudence, garantissant d'emblée le respect du modèle BYOK individuel. |
+| S11 | En-tête `X-Clef-CanLII` accepté en **variante zéro-connaissance** sur `/mcp` pour les clients locaux maîtrisés ; prime sur le coffre quand les deux sont présents. | Permet la rotation ou l'usage local direct depuis un gestionnaire de secrets poste sans transit additionnel. |
+| S12 | **Aucune retombée** sur une clé de l'exploitant (`CANLII_API_KEY` retirée du chemin d'exécution). L'exploitant est un `titulaire` ordinaire dans `DB_IDENTITE`. | Uniformité stricte et protection absolue contre toute mutualisation involontaire d'une clé personnelle. |
+| S13 | **Zéro journalisation de contenu de requête.** Seuls `compteur_jour` et `evenement_technique` (minute UTC, codes d'erreur fermés, rétention 90 jours) existent. | **AMENDÉE le 2026-11-18.** Protection maximale du secret professionnel (art. 9 *Charte*) et élimination de tout risque de corrélation ou de lecture par l'exploitant plaideur. Vérifié statiquement par `verifierSchemaSansContenuIdentifiant` (`G13`, `G25`). |
+| S14 | ~~Plan de contenu expurgé (`forme_requete`)~~ — **ABANDONNÉE le 2026-11-18.** `search_log` est retirée/archivée et **Cloudflare `observability` / `invocation_logs` sont désactivées (`enabled: false`)** sur les Workers MCP. | Même expurgée, une table de requêtes accroît la surface d'exposition lors de recherches approfondies autonomes. Aucune trace d'invocation ni aucun argument JSON-RPC n'est conservé. |
+| S15 | **Gouverne pragmatique à deux étages au lancement, adaptée aux rafales Deep Research** : (1) débit d'arête séparant les IP en échec du trafic authentifié par `titulaire_id`, (2) quotas journaliers D1 par classe (`local`, `sortant`, `semantique`), plus indicateurs d'anomalies en lecture seule dans `/exploitant`. | **AMENDÉE le 2026-11-18.** Les modes Deep Research d'Anthropic et de Google émettent des rafales parallèles depuis des adresses IP infonuagiques partagées : imputer un plafond bas (`20/min`) sur `CF-Connecting-IP` avant authentification bloquerait tous les titulaires légitimes. La quarantaine IP (`20/min`) n'est donc imputée **qu'en cas d'échec d'authentification** (`enregistrerEchecAuth`), doublée d'un plafond brut pré-D1 élevé (`600/min`) et d'un débit post-auth par `titulaire_id` (`300/min` `lois`, `180/min` `juris`). Le score comportemental nocturne automatisé est reporté après observation réelle. |
+| S16 | Les changements d'état (`actif`, `limite`, `suspendu`, `revoque`) sont **humains**, motivés par code fermé dans `registre_gouverne`, notifiés par courriel avec voie de rétablissement écrite. | Pas de coupure algorithmique opaque en cours de mandat professionnel au lancement. |
+| S17 | **Cache D1 CanLII global partagé entre titulaires actifs vérifiés**, sous deux gardes strictes : (1) **masquage de l'horodatage exact `fetched_at`** dans la provenance rendue, et (2) **blocage complet de la lecture du cache (`CLEF_ABSENTE` / `CLEF_REFUSEE`)** si la clé CanLII du titulaire est absente ou révoquée. | **AMENDÉE le 2026-11-18.** Évite de frapper inutilement l'API CanLII pour les mêmes arrêts phares lors des rafales Deep Research (`verify_citations`, `citator`, `get_case`), tout en empêchant qu'un titulaire sans clé valide ne profite du cache et qu'un confrère ne déduise à la seconde près qu'un autre cabinet vient de consulter un arrêt précis. |
+| S18 | Identifiants législatifs frappés sous le domaine du cabinet sur le patron FRBR d'Akoma Ntoso ; identifiants jurisprudentiels repris tels quels de CanLII. | Inchangée (§8). |
+| S19 | La recherche hybride (`Workers AI` + Vectorize) est **activée par défaut (`hybride_permis = 1`), divulguée dans `/conformite` et désarmable à tout moment par chaque titulaire dans `/moi`** (repli lexical FTS5 annoncé dans la réponse). | Transparence complète sur le sous-traitant d'inférence vectorielle et maîtrise individuelle par l'avocat. |
+| S20 | Toute documentation publique de gouverne et de conformité (`/conformite`, `/gouverne`) **dérive des constantes du code** (`QUOTAS_ACTIF_PAR_DEFAUT`, `QUOTAS_LIMITE_PAR_DEFAUT`, `RETENTION_EVENEMENTS_JOURS`). | Élimine toute dérive silencieuse entre le code exécuté et les engagements publiés aux confrères. |
+| S21 | **Portail dédié `MCP-Acces` (`https://acces.poirierlavoie.ca`)** et **Cloudflare Email Sending** (`noreply@acces.poirierlavoie.ca` via liaison `send_email`). | **NOUVELLE (2026-11-18).** Isole les sessions HTML, liens magiques, formulaires `/demande` et `/moi`, console `/exploitant`, flux OAuth 2.1 et envois courriel hors des Workers MCP JSON-RPC sans état. |
+| S22 | **Hygiène Deep Research et garde `SAFETY-KERNEL`.** Descripteurs fermés (`additionalProperties: false`), annotations exactes (`readOnlyHint: true`, `idempotentHint: true`, `destructiveHint: false`, `openWorldHint: false` sur tous les outils hors ligne), WAF de zone ouvert aux rafales `POST /mcp*` authentifiées, et préambule `SAFETY-KERNEL` obligatoire pour les appels autonomes de l'API Gemini Deep Research (`store=True`). | **NOUVELLE (2026-11-18).** Empêche les boucles de recherche autonome de se bloquer sur des invites d'approbation d'écriture, d'être coupées par le WAF Cloudflare de `poirierlavoie.ca`, ou de divulguer des faits clients vers la recherche web ouverte des planificateurs autonomes. |
+| S23 | **Licence `CC-BY-NC-SA-4.0` + Autorisation complémentaire de pratique professionnelle du droit** dans `LICENSE` et `/cgu`. | **NOUVELLE (2026-11-18).** Conserve l'identifiant SPDX uniforme `CC-BY-NC-SA-4.0` sur tous les dépôts tout en levant explicitement (au titre des sections 6(c) et 7(b) CC) toute ambiguïté sur l'usage rémunéré en dossier client par les avocats en règle du Barreau du Québec, sans autoriser la revente commerciale LegalTech/SaaS, avec clauses « tel quel », zéro SLA et divulgation du statut d'avocat plaideur de l'exploitant. |
 
 ---
 
-## 2. Arborescence du socle
+## 2. Arborescence livrée de `MCP-Socle` (`v0.8.0` — relevé du 2026-11-18)
 
-```
+```text
 MCP-Socle/
 ├── src/
-│   ├── identite/             LA RAISON D'ÊTRE DU SOCLE
-│   │   ├── porteur.ts        extraction du jeton : Bearer | ?key= | segment de chemin ;
-│   │   │                     comparaison SHA-256 + timingSafeEqual, sans court-circuit ;
-│   │   │                     FERMÉ PAR DÉFAUT — liste de secrets vide ⇒ tout refusé
-│   │   └── refus.ts          404 sans oracle (S8)
-│   ├── protocole/            le transport que l'identité emprunte, et rien de plus
-│   │   ├── rpc.ts            enveloppe JSON-RPC 2.0 (repris de jurisprudence/src/mcp/rpc.ts)
-│   │   ├── http.ts           CORS, origines admises, préflight, debitAcceptable, jsonResponse
-│   │   ├── entetes.ts        MCP-Protocol-Version, Mcp-Method, Mcp-Name,
-│   │   │                     décodage de la sentinelle =?base64?…?=, en-tête<->corps (-32020)
-│   │   ├── meta.ts           _meta : protocolVersion, clientInfo, clientCapabilities, serverInfo
-│   │   ├── decouverte.ts     server/discover
-│   │   ├── versions.ts       négociation, -32022, pont vers initialize (sans état)
-│   │   ├── valide.ts         JSON Schema en sous-ensemble (repris de jurisprudence)
-│   │   └── registre.ts       ToolDescriptor, listToolDescriptors — PAS callTool
-│   └── index.ts              rien d'exécutable : uniquement des exports
-├── test/                     tests du socle, sans réseau ni clef
-└── package.json              "type": "module", zéro dépendance d'exécution
+│   ├── identite/
+│   │   ├── porteur.ts        extraction Bearer | ?key= | /mcp/<jeton> | porteurEntete ;
+│   │   │                     SHA-256 + timingSafeEqual ; frapperJeton (43 car. base64url) ;
+│   │   │                     estJetonFrappe, queueJeton (6 car.), normaliserUrlMontage
+│   │   ├── refus.ts          404 à corps vide (/mcp) ; 401 + WWW-Authenticate RFC 9728 (/mcp/oauth) ;
+│   │   │                     403 sans CORS, 429 + Retry-After, 405 + Allow
+│   │   ├── titulaire.ts      Principal, TitulaireResolu, DepotJetons, creerDepotJetonsD1 ;
+│   │   │                     resoudreJeton à travail constant, porteeAutorisee (les_deux | service),
+│   │   │                     ouvrirPrincipal, mise à jour quotidienne de vu_le
+│   │   ├── coffre.ts         scellerCoffre & ouvrirCoffre (HKDF-SHA256 + AES-256-GCM, AAD liée,
+│   │   │                     fermeture stricte sans retour du clair), empreinteCoffre & repereCoffre
+│   │   │                     (HMAC-SHA256 à clé maître), expurger
+│   │   ├── oauth.ts          RFC 9728 (/.well-known/oauth-protected-resource), RFC 8414
+│   │   │                     (/.well-known/oauth-authorization-server), PKCE S256 obligatoire,
+│   │   │                     porteesCanoniques, estUriRedirectionAutorisee, CIMD anti-SSRF
+│   │   └── gouverne.ts       quotas journaliers (local/sortant/semantique), quarantaine IP d'échecs
+│   │                         + débit Deep Research, EvenementTechnique (minute UTC, 90 j), purges
+│   │                         indexées Loi 25 & suppression en cascade (supprimerCompteTitulaireD1,
+│   │                         POLITIQUES_RETENTION_IDENTITE, G18), schéma D1 typé GLOB & G13/G25
+│   ├── protocole/
+│   │   ├── rpc.ts            enveloppe JSON-RPC 2.0
+│   │   ├── http.ts           CORS, ORIGINES_PAR_DEFAUT, preflight extensible, debitAcceptable,
+│   │   │                     drapeau, reponseSante
+│   │   ├── entetes.ts        MCP-Protocol-Version, Mcp-Method, Mcp-Name, sentinelle =?base64?…?=
+│   │   ├── meta.ts           _meta, clientLisible, avecServerInfo, avecCache, habillerResultat
+│   │   ├── decouverte.ts     server/discover et fiche SEP-2127 (/mcp/server-card)
+│   │   ├── versions.ts       négociation, -32022, pont initialize sans état
+│   │   ├── valide.ts         validateur JSON Schema fermé par défaut (sûreté prototype)
+│   │   ├── registre.ts       DescripteurOutil, listToolDescriptors, appelerOutil
+│   │   └── serveur.ts        lireCorpsBorne (64 Kio, UTF-8 fatal) et servirRequeteMcp
+│   └── index.ts              réexports purs de toute la surface publique
+├── scripts/
+│   └── verifier-audit.mjs    contrôle 0 vulnérabilité prod + parité bidirectionnelle osv-scanner.toml
+├── test/                     suite Vitest hors ligne exécutée dans workerd (Miniflare)
+├── LICENSE                   CC-BY-NC-SA-4.0 + autorisation complémentaire de pratique professionnelle
+├── osv-scanner.toml          registre daté et motivé des exemptions OSV de devDependencies
+└── package.json              "type": "module", version 0.8.0, zéro dépendance d'exécution
 ```
 
-> ⚠ **CE DESSIN EST UN RELEVÉ DU 2026-09-18**, pris sur `find src -type f`, et non une
-> intention. Le précédent montrait **sept** répertoires et vingt-et-une lignes de fichiers ;
-> douze d'entre elles nommaient des fichiers jamais écrits, et cinq répertoires entiers
-> — `coffre/`, `gouverne/`, `journal/`, `sortie/`, `page/` — ne contenaient qu'un
-> `LISEZ-MOI`. Ils ont été supprimés le 2026-09-17.
->
-> Un dessin d'arborescence se lit comme un ÉTAT, jamais comme un plan. Ce qui reste à faire
-> se dit dans une §11, où l'on sait que c'est à faire.
->
-> Ce qui a disparu n'a pas disparu du même mouvement : `sortie/` a été MESURÉ puis écarté
-> (S5, abandonnée) et ne revient pas. Les quatre autres restent des phases à venir dont le
-> lieu d'implantation n'est plus arrêté — le socle ne les accueillera qu'à la condition
-> nouvelle du `CLAUDE.md` : **un besoin mesuré, pas une spécification qui l'a écrit**.
-
-**Ce que le socle ne porte jamais.** L'analyseur de citations, les tables du Québec, le
-pipeline EPUB, les descripteurs d'outils, les gabarits de rendu du domaine, **la sortie
-structurée et les mises en garde**. Le socle ne connaît pas le droit. S'il faut y écrire le
-mot « article », c'est qu'on s'est trompé de dépôt.
-
-**Ce qu'il porte, et rien d'autre :** l'identité, et le transport MCP qui la porte.
+**Frontière infranchissable :** `MCP-Socle` ne contient aucun concept juridique (`test/doc.test.ts`).
 
 ---
 
-## 3. Protocole `2026-07-28`, sans état
+## 3. Protocole `2026-07-28`, compatibilité descendante et Deep Research
 
-### 3.1 Ce qui disparaît
+### 3.1 Invariants de transport sans état
 
-Retirer, des deux Workers : la poignée `initialize` et `notifications/initialized` comme
-préalable, l'en-tête `Mcp-Session-Id` (ignoré, jamais frappé ni renvoyé), la route `GET` sur le
-point d'entrée MCP (`405`), la route `DELETE` (`405`), `Last-Event-ID` (ignoré), `ping`,
-`logging/setLevel`, `notifications/roots/list_changed`. `legislation` perd du même coup sa
-classe `QclawMCP extends McpAgent` et son Durable Object.
+- **`server/discover`** et **`/mcp/server-card`** (SEP-2127) sont servis sur les deux connecteurs.
+- **Pont de versions (`protocole/versions.ts`) :**
+  1. `initialize` est **toujours exempté** de l'en-tête `MCP-Protocol-Version` (conformément à `2025-06-18`+).
+  2. Tant que `2025-03-26` figure dans `VERSIONS` (`SERT_AVANT_2025_06_18 = true`), une requête hors `initialize` sans en-tête est traitée en `2025-03-26` afin de préserver les scripts de veille.
+- **`resultType: "complete"`** et indices de cache (`ttlMs`, `cacheScope`) sous `2026-07-28` (`tools/list` et `server/discover` : `3 600 000` ms, `public`, d'où l'interdiction absolue de faire varier les descripteurs `tools/list` selon le titulaire : ce qui dépend de `hybride_permis` ou de la clé CanLII s'exprime dans la **sortie** de l'outil, jamais dans `tools/list`).
+- **Zéro `x-mcp-header`** dans les registres d'outils (`G19`).
 
-### 3.2 Ce qui apparaît
+### 3.2 Annotations d'outils pour l'exécution autonome Deep Research (`S22`)
 
-**`server/discover` est obligatoire.** Rend les versions servies, les capacités et l'identité du
-serveur. C'est aussi la sonde de compatibilité : un client peut l'appeler avant tout le reste.
+Les boucles autonomes de **Claude Research** et **Gemini Deep Research** inspectent `annotations`
+pour décider si un appel exige une confirmation humaine d'écriture ou d'accès extérieur :
 
-**`_meta` par requête.** Chaque requête porte `io.modelcontextprotocol/protocolVersion`,
-`io.modelcontextprotocol/clientInfo` et `io.modelcontextprotocol/clientCapabilities`. Chaque
-résultat porte `io.modelcontextprotocol/serverInfo`. Le `clientInfo` est **un signal de gouverne
-de premier ordre** (§6.3) : le conserver dans `evenement_technique.client`.
+- Tous les outils déclarent `additionalProperties: false`, `readOnlyHint: true`,
+  `destructiveHint: false` et `idempotentHint: true`.
+- En Phase 3 dans `MCP-Jurisprudence`, les outils purement locaux hors réseau (`parse_citation`,
+  `list_tribunals`, etc.) doivent déclarer **`openWorldHint: false`** (corrigeant l'estampille
+  uniforme `openWorldHint: true` relevée lors de l'extraction du registre).
 
-**Validation en-tête contre corps.** `MCP-Protocol-Version` doit égaler la valeur de `_meta` ;
-`Mcp-Method` doit égaler `method` ; `Mcp-Name` doit égaler `params.name` ou `params.uri`, après
-décodage du sentinelle `=?base64?…?=`. Tout écart : `400` + JSON-RPC `-32020` (`HeaderMismatch`).
-Une version inconnue : `400` + `-32022` (`UnsupportedProtocolVersion`) listant les versions
-servies. Une méthode inconnue : `404` + `-32601`, avec corps JSON-RPC — le corps est ce qui
-distingue ce cas du `404` d'un serveur d'ancienne génération.
+### 3.3 Réglage WAF Cloudflare de zone (`poirierlavoie.ca`)
 
-**`resultType`.** Tout résultat porte `resultType: "complete"`. Aucun outil de ces deux
-connecteurs n'a besoin de `"input_required"` : ils sont en lecture seule et ne sollicitent
-jamais l'usager. Ne pas implémenter le patron MRTR.
+Les agents autonomes (`claude.ai` Research, `deep-research-preview-04-2026`, Claude Code,
+Antigravity) émettent des rafales rapides de `POST /mcp` et `POST /mcp/oauth` sans empreinte TLS
+de navigateur interactif. Avant l'ouverture (Phase 3), vérifier et maintenir une règle WAF de zone
+sur `legislation.poirierlavoie.ca`, `jurisprudence.poirierlavoie.ca` et `acces.poirierlavoie.ca`
+exemptant des défis gérés (*Managed Challenge* / blocage *Bot Fight*) les requêtes `POST` vers
+`/mcp`, `/mcp/*` et `/oauth/token` portant `Content-Type: application/json` ou
+`application/x-www-form-urlencoded`, afin que la gouverne applicative (§6) soit seule juge.
 
-**`ttlMs` et `cacheScope`.** Obligatoires sur `tools/list`, `resources/list`,
-`prompts/list`, `resources/read`, `resources/templates/list`.
+### 3.4 Garde `SAFETY-KERNEL` pour les exécutions autonomes Gemini API Deep Research
 
-| Résultat | `ttlMs` | `cacheScope` | Motif |
+Dans `claude.ai`, Antigravity et Gemini CLI, les 5 fichiers `SKILL.md` du greffon injectent le
+noyau `SAFETY-KERNEL`. En revanche, un appel direct à l'API Interactions de Google
+(`agent="deep-research-preview-04-2026"` ou `deep-research-max-preview-04-2026`, qui impose
+`store=True` en mode `background=True`) n'embarque pas automatiquement `skills/` et active la
+recherche web ouverte du planificateur. Toute documentation d'intégration API et les extraits
+générés dans `/moi` doivent imposer :
+
+1. **Anonymisation intégrale préalable** (aucun nom de partie, numéro de dossier ni fait identifiant).
+2. **Préambule `SAFETY-KERNEL` obligatoire** collé en tête du champ `input` :
+
+```text
+CONTRAINTES IMPÉRATIVES (DROIT CIVIL QUÉBÉCOIS — PALIER 2/3) :
+1. Confidentialité : Requête entièrement anonymisée; n'inclure aucun nom de partie, numéro de dossier ni fait identifiant dans aucune recherche web ou requête `query`.
+2. Sources primaires obligatoires : Ne citer aucun article de loi sans l'avoir lu via le serveur `lois` (`get_article` / `get_articles`) en relevant sa date de consolidation. Ne citer aucun arrêt sans l'authentifier via `juris` (`verify_citations`, `citator` / `subsequent_history`).
+3. Étanchéité bijuridique : Exclure tout droit étranger (`.fr`, Belgique, Suisse; art. 1240, 2224, 1641) et tout calque de common law (*duty of care*, *consideration*, *estoppel*, dommages punitifs sans loi habilitante sous l'art. 1621 C.c.Q.).
+4. Lecture intégrale des arrêts : N'énoncer un ratio ou paragraphe d'arrêt que si le texte intégral officiel a été consulté en session. Sinon, laisser explicitement le marqueur :
+   [RATIO / PAR. X À INSÉRER APRÈS LECTURE DE <citation + lien CanLII>]
+5. Méthode : Vérifier d'abord les verrous préalables (prescription, déchéance, avis préalable, compétence), puis exposer le fondement législatif, la jurisprudence vérifiée avec statut de lecture, et l'attaque adverse la plus forte.
+
+QUESTION JURIDIQUE ANONYMISÉE :
+<Insérer ici la question de droit abstraitement formulée>
+```
+
+3. **Suppression optionnelle post-exécution** (`delete-interaction`) si la conservation côté Google
+   n'est pas souhaitée.
+
+---
+
+## 4. Identité partagée (`DB_IDENTITE`), double monture et OAuth 2.1
+
+### 4.1 Topologie de la base D1 partagée `mcp-identite` (`DB_IDENTITE`)
+
+Une seule base Cloudflare D1 nommée **`mcp-identite`** est liée sous le nom **`DB_IDENTITE`** aux
+trois Workers authentifiés :
+
+1. **`MCP-Acces` (`acces.poirierlavoie.ca`)** — lecture/écriture : demandes d'admission,
+   vérification courriel, épreuve et scellement initial du coffre CanLII, approbation manuelle
+   (`/exploitant`), console libre-service (`/moi`), serveur d'autorisation OAuth 2.1 (`/oauth/*`),
+   lecture des quotas et indicateurs d'anomalies.
+2. **`MCP-Legislation` (`legislation.poirierlavoie.ca`)** — lecture de `titulaire`/`jeton` et
+   `compteur_jour` ; écriture asynchrone (`ctx.waitUntil`) de `jeton.vu_le`, `compteur_jour` et
+   `evenement_technique`. Sa base métier `DB` (`legislation`) demeure strictement dédiée au corpus.
+3. **`MCP-Jurisprudence` (`jurisprudence.poirierlavoie.ca`)** — lecture de `titulaire`/`jeton`,
+   `coffre_clef` (`usage = 'canlii'`) et `compteur_jour` ; écriture asynchrone de `jeton.vu_le`,
+   `compteur_jour`, `evenement_technique` et `coffre_clef.etat` (si CanLII révoque une clé en
+   cours d'usage). Sa base métier `DB` (`canlii`) demeure dédiée au répertoire et au cache partagé.
+
+Le schéma SQL canonique est engendré par `construireSchemaIdentiteD1(["legislation", "jurisprudence"])`
+dans `src/identite/gouverne.ts` et validé hors ligne par `verifierSchemaSansContenuIdentifiant` (`G13`, `G25`)
+et `verifierCouvertureRetentionSchema` (`G18`).
+
+### 4.2 Forme et portée des jetons (`frapperJeton` — correctif A2 + `portee`)
+
+- **Entropie et alphabet :** `32` octets tirés de `crypto.getRandomValues` encodés en `base64url`
+  sans remplissage (`43` caractères exacts, `estJetonFrappe`), affichés **une seule fois** à
+  l'émission ; seuls `empreinte` (`SHA-256` hexadécimal) et `queue` (`6` derniers caractères,
+  `queueJeton`) sont stockés dans `DB_IDENTITE.jeton`.
+- **Portée (`jeton.portee` et `porteesCanoniques`) :**
+  - `'les_deux'` *(défaut)* : accepté par `MCP-Legislation` et `MCP-Jurisprudence` — permet au
+    praticien local de configurer un seul secret s'il le souhaite.
+  - `'legislation'` ou `'jurisprudence'` (et, de manière générale pour $1 \le N \le 8$ services,
+    tout sous-ensemble propre trié produit par `porteesCanoniques` / `normaliserPorteeOAuth`) :
+    jeton cloisonné, sélectionnable dans `/moi` ou par le paramètre `scope` OAuth 2.1, en
+    concordance stricte avec `CHECK (portee IN (...))`.
+
+### 4.3 Parcours d'admission sur `acces.poirierlavoie.ca/demande` (sas `demande_acces` anti-squattage et `MODE_ADMISSION`)
+
+Aucune auto-ouverture immédiate. Le mode d'ouverture est gouverné par `MODE_ADMISSION`
+(`resoudreModeAdmission`, fermé par défaut sur `'ferme'` si absent, `'invitation'` pour le
+déploiement initial par cohorte via `invitation_acces`, puis `'ouvert'`). L'admission comporte
+**trois verrous séquentiels** conçus pour interdire tout déni d'inscription (*squattage*) d'un
+numéro public du Barreau avant confirmation de la maîtrise du courriel :
+
+1. **Sas préalable `demande_acces` et vérification automatisée du courriel :** `POST /demande`
+   n'écrit **jamais** dans `titulaire` (où `numero_membre` et `courriel` sont `UNIQUE`). La demande
+   non confirmée est déposée dans la table sas `demande_acces` (sans contrainte `UNIQUE` sur
+   `numero_membre` ni `courriel`, TTL `DUREE_DEMANDE_ACCES_MINUTES = 30` min, purgée par
+   `purgerDemandesAccesD1`), avec réponse neutre uniforme sans oracle d'énumération. Un jeton de
+   confirmation à usage unique (haché SHA-256 dans `demande_acces.empreinte_jeton`) est expédié
+   depuis `noreply@acces.poirierlavoie.ca` (Cloudflare Email Sending, liaison `send_email`).
+2. **Épreuve CanLII en direct et promotion atomique vers `titulaire` (`etat = 'en_attente'`) :**
+   lors de la confirmation du courriel (ou dès la soumission si scellée sous `demande_acces.id`),
+   `MCP-Acces` éprouve en direct `GET caseBrowse/fr/` auprès de l'API CanLII avec la clé fournie.
+   Si CanLII répond `401`/`403`, la demande n'entre **pas** en file d'approbation. Si l'appel
+   réussit et que le courriel est confirmé, `MCP-Acces` promeut atomiquement la demande dans
+   `titulaire` (`id = demande.id`, `etat = 'en_attente'`, `courriel_verifie_le` renseigné) et
+   scelle la clé via `scellerCoffre` (`usage = "canlii"`) dans `coffre_clef` (`etat = 'valide'`,
+   avec `empreinte_clef` HMAC indexée par `cc_par_empreinte` sans contrainte `UNIQUE`).
+3. **Vérification humaine manuelle au *Bottin des avocats* (`/exploitant`) :** l'exploitant vérifie
+   manuellement l'inscription active et l'exercice en règle au Tableau de l'Ordre (avec badge
+   informatif non bloquant si `coffre_clef.empreinte_clef` révèle le partage d'une clé de cabinet
+   entre collègues), consigne sa trace de diligence dans `titulaire.note_admission`, et approuve
+   (`etat = 'actif'`) ou refuse (`etat = 'refuse'`). À l'approbation, `MCP-Acces` envoie un
+   courriel invitant le confrère à ouvrir `/moi` (par lien magique `session_portail`) pour frapper
+   son premier jeton (affiché une seule fois) ou connecter directement ses clients en OAuth 2.1.
+
+### 4.4 Architecture double monture (`/mcp` et `/mcp/oauth`) et ordre de traitement
+
+Chaque connecteur (`MCP-Legislation` et `MCP-Jurisprudence`) sert deux points d'entrée adossés au
+même registre d'outils et à la même gouverne :
+
+1. **`/mcp` (monture directe à jeton opaque — refus `404` à corps vide) :**
+   - Accepte `Authorization: Bearer <jeton>`, `?key=<jeton>` et `/mcp/<jeton>` (plus `X-Clef-CanLII`
+     sur `MCP-Jurisprudence`).
+   - Sert Claude Code, Claude Desktop, Antigravity, Gemini CLI, `claude.ai` (`?key=`), l'API
+     Gemini Deep Research (`mcp_server`) et la veille CI (`MCP_TOKEN_VEILLE`).
+   - **Important :** les routes exactes `/mcp/server-card` et `/mcp/oauth` doivent être interceptées
+     **avant** le motif `/mcp/<jeton>` pour ne jamais être interprétées comme un segment de secret.
+2. **`/mcp/oauth` (monture OAuth 2.1 — refus `401` + RFC 9728) :**
+   - N'accepte que `Authorization: Bearer <jeton>` (`queryKey` et segment de chemin désactivés ;
+     tout sous-chemin `/mcp/oauth/<x>` est rejeté par `estCheminMontageAdmissible`).
+   - Tout appel non authentifié ou porteur d'un jeton invalide/expiré/révoqué reçoit
+     `refuser("401", origin, { resourceMetadata: "https://<hote>/.well-known/oauth-protected-resource/mcp/oauth", scope: "..." })`.
+   - Chaque connecteur sert publiquement **uniquement** `GET /.well-known/oauth-protected-resource/mcp/oauth`
+     (conformément à l'insertion de chemin RFC 9728 §3.1 et à l'URL `resource_metadata` émise dans
+     `WWW-Authenticate`), en laissant la racine `GET /.well-known/oauth-protected-resource` en `404`
+     afin qu'aucun client à jeton statique sur `/mcp` ne bascule accidentellement en découverte
+     OAuth lors d'une faute de frappe sur `?key=`.
+   - `MCP-Acces` sert `GET /.well-known/oauth-authorization-server` (`repondreServeurAutorisation`),
+     `GET/POST /oauth/authorize` (authentifiant le titulaire `actif` par sa session `/moi`
+     `type_lien = 'session_moi'`, exigeant PKCE `S256`, normalisant `scope` via
+     `normaliserPorteeOAuth` et validant `client_id` soit contre `client_oauth`, soit par CIMD via
+     `estClientIdMetadonneesValide` + `fetch(clientId, { redirect: "error" })` +
+     `validerMetadonneesClientCimd`, ainsi que `redirect_uri` par égalité stricte via
+     `estUriRedirectionAutorisee`) et `POST /oauth/token` (vérifiant `verifierDefiPkceS256`,
+     consommant atomiquement `code_oauth` et émettant un jeton `frapperJeton()` inscrit dans
+     `DB_IDENTITE.jeton`).
+
+**Ordre impératif de traitement d'une requête MCP (§4.3 actualisé) :**
+
+1. **Coupe-circuit global (`MCP_ENABLED !== "true"`) :** `404` sur `/mcp*`, `/.well-known/oauth-protected-resource*` et `/health`. **Jamais** sur `/` ni sur les pages publiques de `MCP-Acces`.
+2. **Origine navigateur (`origineRefusee`) :** `403` sans CORS avant toute authentification.
+3. **Pré-vol CORS (`OPTIONS`) :** `204` (`preflight`, incluant `X-Clef-CanLII` sur `juris`), **jamais limité en débit** (`G6`).
+4. **Garde de débit pré-authentification (`verifierDebitPreAuth`) :** vérifie la quarantaine locale des IP fautives et le plafond brut de rafale par IP (`600/min`), tout en laissant passer vers l'étape 5 toute requête porteuse d'une empreinte SHA-256 récemment validée sur l'isolat (`quarantaine.marquerEmpreinteValide`, tant pour les jetons `frapperJeton` de 43 car. que pour les secrets partagés transitoires/CI de 64 car. hex) afin qu'aucune tempête d'échecs collatéraux sur une IP infonuagique partagée (`claude.ai`, `gemini.google.com`, runners CI) n'interrompe la session active d'un confrère (`S15`). Sur refus : `404` sur `/mcp`, `429` sur `/mcp/oauth`.
+5. **Identité (`ouvrirPrincipal`) :** résolution D1 sans court-circuit (`resoudreJeton`) + secrets partagés/CI éventuels (`trouverPorteurApparie` sur `/mcp`), alimentant tous deux `surEmpreinteValide: (h) => quarantaine.marquerEmpreinteValide(h)` uniquement lorsque le chemin est structurellement admissible (`estCheminMontageAdmissible`). En cas d'échec : appel de `enregistrerEchecAuth` avec `candidatsJetons` (évinçant immédiatement tout jeton révoqué/compromis du laissez-passer pré-D1 et imputant les `20/min` d'échecs par IP ainsi que les `300/min` globaux `"echecs"`), puis `404` vide sur `/mcp` ou `401` RFC 9728 sur `/mcp/oauth`.
+6. **Méthode HTTP (`POST` requis) — APRÈS l'identité sur `/mcp` (`G23`) :** `405` (`methodeNonPermise`) uniquement pour un appelant authentifié (un `GET /mcp` anonyme reste en `404`).
+7. **Débit par titulaire (`verifierDebitTitulaire`) :** clé = `titulaireId` (`300/min` `lois`, `180/min` `juris` pour `actif`/`surveille` ; `20/min` pour `limite`) -> `429` + `Retry-After`.
+8. **Lecture des compteurs journaliers (`lireCompteursJourD1`) :** une lecture indexée sur `(titulaire_id, jour)`.
+9. **Corps borné (`64 Kio`), négociation de version et validation d'en-têtes (`servirRequeteMcp`).**
+10. **Décision de quota (`verifierQuotaJour`) sur le nom d'outil du CORPS** (jamais sur `Mcp-Name` seul) : dépassement -> HTTP `200` + `erreurQuotaEpuise` (`isError: true`).
+11. **Garde BYOK CanLII (sur `MCP-Jurisprudence` uniquement, avant même toute lecture du cache D1 `cases`/`citator_*`) :** résolution via `ouvrirCoffre` (`surchargeEntete = porteurEntete(req, "X-Clef-CanLII")` -> `coffre_clef`). Si `ABSENTE` ou `REFUSEE` -> HTTP `200` (`isError: true`, `[CLEF_ABSENTE]` ou `[CLEF_REFUSEE]`).
+12. **Exécution de l'outil**, puis écriture différée dans `ctx.waitUntil` de `compteur_jour` et `evenement_technique`.
+
+---
+
+## 5. Coffre de clés CanLII et politique du cache partagé
+
+### 5.1 Chiffrement par enveloppe et empreinte HMAC à clé maître (`src/identite/coffre.ts`)
+
+```text
+DEK            = HKDF-SHA256(ikm = COFFRE_MAITRE_V{n}, salt = titulaireId, info = "canlii/v1")
+chiffre        = AES-256-GCM(DEK, iv_12_octets, clair, aad = titulaireId || ":canlii:" || version)
+K_empreinte    = HKDF-SHA256(ikm = COFFRE_MAITRE_V1, salt = "coffre-hmac/v1", info = "canlii/empreinte-v1")
+empreinte_clef = HMAC-SHA256(K_empreinte, clair)
+K_repere       = HKDF-SHA256(ikm = COFFRE_MAITRE_V1, salt = "coffre-hmac/v1", info = "canlii/repere-v1")
+repere         = masque_fin(clair) || "#" || hex(HMAC-SHA256(K_repere, clair))[0..8]
+```
+
+- `COFFRE_MAITRE_V1` (>= 32 caractères aléatoires) est posé par `wrangler secret put` sur
+  `MCP-Acces` et `MCP-Jurisprudence` uniquement (`MCP-Legislation` n'a pas ce secret et ne lit
+  jamais `coffre_clef`).
+- `empreinte_clef` (`empreinteCoffre`, indexée sans contrainte `UNIQUE` par `cc_par_empreinte` sur
+  `(usage, empreinte_clef)`) est indépendante de `titulaire_id` afin que `/exploitant` affiche un
+  badge informatif lorsque des collègues d'un même cabinet partagent une clé CanLII commune sans
+  bloquer leur admission, tout en interdisant toute recherche exhaustive hors ligne si D1 était
+  extraite sans `COFFRE_MAITRE`.
+- `repereCoffre` dérive son étiquette `#8 hex` par `HMAC-SHA256` sous clé maître (jamais d'empreinte
+  `SHA-256` non salée) et n'expose **aucun préfixe** (`0` car. sous 16 car., `2` derniers car. de
+  16 à 23 car., `4` derniers car. à 24+ car.).
+- `ouvrirCoffre` ne renvoie **jamais** `Promise<string>` : le texte clair n'existe que dans la
+  fermeture construisant le client HTTP CanLII, et son `Uint8Array` temporaire est remis à zéro
+  (`fill(0)`) dans un bloc `finally` (`G10`).
+- `expurger()` purge systématiquement `?key=`, `api_key=`, `Bearer`, `/mcp/<jeton>` et toute clé
+  connue des messages d'erreur avant journalisation (`G9`).
+
+### 5.2 Cache global D1 `MCP-Jurisprudence` sous garde BYOK (`S17` amendée)
+
+1. **Partage global entre titulaires actifs :** les tables `databases`, `cases`, `cases_fts` et
+   `citator_*` de `MCP-Jurisprudence` sont communes à tous les avocats vérifiés actifs.
+2. **Verrou BYOK préalable au cache :** aucun outil consultant les fiches ou le citateur CanLII ne
+   peut lire le cache D1 si `ouvrirCoffre` retourne `ABSENTE`, `REFUSEE` ou `INVALIDE`. Un titulaire
+   dont la clé CanLII a été retirée ou révoquée reçoit `[CLEF_ABSENTE]` / `[CLEF_REFUSEE]` même si
+   la décision figure déjà en cache.
+3. **Suppression de l'horodatage exact `fetched_at` au rendu :** la prose retournée au modèle ne
+   doit jamais afficher l'heure ou la seconde de mise en cache (`fetched_at`), afin qu'aucun
+   titulaire ne puisse inférer qu'un confrère adverse vient d'interroger un arrêt précis.
+4. **Révocation dynamique :** si un appel sortant à CanLII avec la clé du coffre (hors surcharge
+   `X-Clef-CanLII`) reçoit `401` ou `403` de CanLII, `MCP-Jurisprudence` marque
+   `coffre_clef.etat = 'refusee'` dans `ctx.waitUntil` et renvoie `[CLEF_REFUSEE]` en invitant le
+   titulaire à mettre à jour sa clé dans `https://acces.poirierlavoie.ca/moi`.
+
+---
+
+## 6. Gouverne à deux étages et résistance aux rafales Deep Research
+
+### 6.1 Étage 1 — Limiteurs d'arête à `namespace_id` distincts (`G34`)
+
+Deux dépôts ou deux étages ne doivent **jamais** partager un même `namespace_id` Cloudflare
+(corrigeant le `"1001"` historique partagé entre `legislation` et `jurisprudence`).
+
+| Worker | Liaison Wrangler | `namespace_id` | Clé | Plafond | Effet au franchissement |
+|---|---|---|---|---|---|
+| `MCP-Legislation` | `RL_PRE_AUTH_IP` | `"1011"` | `CF-Connecting-IP` | `600 / 60 s` | `404` (`/mcp`) ou `429` (`/mcp/oauth`) avant D1 |
+| `MCP-Legislation` | `RL_ECHEC_IP` | `"1012"` | `CF-Connecting-IP` *(échecs seuls)* | `20 / 60 s` | Quarantaine mémoire 60 s de l'IP fautive |
+| `MCP-Legislation` | `RL_ECHECS_GLOBAL` | `"1013"` | `"echecs"` *(échecs seuls)* | `300 / 60 s` | Disjoncteur d'incident distribué |
+| `MCP-Legislation` | `RL_TITULAIRE` | `"1014"` | `titulaire_id` | `300 / 60 s` | `429` + `Retry-After: 60` |
+| `MCP-Legislation` | `RL_TITULAIRE_LIMITE` | `"1015"` | `titulaire_id` | `20 / 60 s` | `429` + `Retry-After: 300` |
+| `MCP-Jurisprudence` | `RL_PRE_AUTH_IP` | `"1021"` | `CF-Connecting-IP` | `600 / 60 s` | `404` (`/mcp`) ou `429` (`/mcp/oauth`) avant D1 |
+| `MCP-Jurisprudence` | `RL_ECHEC_IP` | `"1022"` | `CF-Connecting-IP` *(échecs seuls)* | `20 / 60 s` | Quarantaine mémoire 60 s de l'IP fautive |
+| `MCP-Jurisprudence` | `RL_ECHECS_GLOBAL` | `"1023"` | `"echecs"` *(échecs seuls)* | `300 / 60 s` | Disjoncteur d'incident distribué |
+| `MCP-Jurisprudence` | `RL_TITULAIRE` | `"1024"` | `titulaire_id` | `180 / 60 s` | `429` + `Retry-After: 60` (`CANLII_MIN_INTERVAL_MS=600` maintenu sur les manqués de cache) |
+| `MCP-Jurisprudence` | `RL_TITULAIRE_LIMITE` | `"1025"` | `titulaire_id` | `20 / 60 s` | `429` + `Retry-After: 300` |
+| `MCP-Acces` | `RL_DEMANDE_IP` | `"1031"` | `CF-Connecting-IP` | `10 / 60 s` | `429` sur `POST /demande` et liens magiques |
+| `MCP-Acces` | `RL_OAUTH_IP` | `"1032"` | `CF-Connecting-IP` | `60 / 60 s` | `429` sur `/oauth/authorize` et `/oauth/token` |
+
+### 6.2 Étage 2 — Quotas journaliers D1 par classe d'outil (`QUOTAS_ACTIF_PAR_DEFAUT`)
+
+| Classe | Outils rattachés | Plafond `actif` / `surveille` | Plafond `limite` |
 |---|---|---|---|
-| `tools/list` | 3 600 000 | `public` | le registre ne bouge qu'au déploiement |
-| `resources/list` (législation) | 86 400 000 | `public` | corpus semestriel |
-| `resources/read` (article) | 86 400 000 | `public` | texte officiel, immuable dans l'expression |
-| `resources/read` (fiche de décision) | 604 800 000 | `private` | tiré de la collection de CanLII sous la clef d'un licencié (S17) |
+| `local` | Tous les outils `lois` lexicaux/structurels (`find_relevant`, `get_article`, `get_articles`, `get_toc`, etc.), outils `juris` hors réseau (`parse_citation`, `list_tribunals`) et lectures servies à 100 % depuis le cache D1 | **1 500 / jour UTC** | **150 / jour UTC** |
+| `sortant` | Tout appel d'outil `juris` déclenchant au moins une requête sortante vers l'API CanLII (manqué de cache) | **200 / jour UTC** | **20 / jour UTC** |
+| `semantique` | `lois.search_text` lorsque le mode vectoriel hybride (`Workers AI`) est effectivement exécuté (`hybride_permis = 1` et `HYBRID_SEARCH = "true"`) | **150 / jour UTC** | **15 / jour UTC** |
 
-**Ordre déterministe de `tools/list`.** Trier par nom, jamais par ordre d'insertion d'objet.
-Améliore la mise en cache d'invite côté client, et rend la page publique stable.
+### 6.3 Indicateurs d'anomalies dans `/exploitant` (sans automate nocturne au lancement)
 
-**`x-mcp-header`.** N'annoter **aucun** paramètre. Le seul usage envisageable serait la clef
-CanLII, et il est écarté par S10. Un test de garde doit épingler l'absence de la chaîne
-`x-mcp-header` dans les deux registres.
+La machine d'états automatique nocturne (`SEUILS_GOUVERNE`) est **reportée**. Au lancement, la vue
+`/exploitant` de `MCP-Acces` affiche des indicateurs agrégés en lecture seule calculés sur
+`compteur_jour` et `evenement_technique` :
+- titulaires approchant ou atteignant `QUOTA_EPUISE` à répétition ;
+- ratio élevé `introuvables / appels` ou `erreurs / appels` ;
+- multiplicité anormale de `client` (`clientInfo`) distincts sur un même jeton en une même journée.
 
-### 3.3 Compatibilité descendante
-
-Le pont vit dans `protocole/versions.ts` et dans lui seul.
-
-- Requête **sans** `MCP-Protocol-Version` : la spécification n'ouvre que deux branches — la
-  traiter comme `2025-03-26` (permis seulement si l'on prend en charge les clients antérieurs
-  à `2025-06-18`), ou la refuser en `400` + `-32020`. Ne jamais la promouvoir silencieusement
-  en `2025-06-18` : ce serait inventer une troisième branche.
-
-  ⛔ **DEUX RECTIFICATIONS, toutes deux payées en production. À lire avant d'appliquer.**
-
-  **(a) `initialize` EST TOUJOURS EXEMPTÉ, quelle que soit la branche retenue.** Sous
-  `2025-06-18`, l'en-tête n'est exigé que sur les requêtes POSTÉRIEURES à l'initialisation :
-  le POST `initialize` n'en porte légitimement aucun. Le refuser rejetterait la poignée de
-  **tout client conforme**, connecteur claude.ai compris. `versionAbsenteAdmise` rend donc
-  `true` sur `initialize` inconditionnellement — voir `protocole/versions.ts`, qui porte la
-  garde. Cette phrase manquait, et l'omission a coûté un incident.
-
-  **(b) Le choix entre les deux branches est COUPLÉ au maintien de `2025-03-26`.** La règle
-  disait « S3 retirant `2025-03-26`, **la refuser** » — mais S3 n'a pas été appliquée :
-  `2025-03-26` est toujours servie par les deux connecteurs. Refuser la requête sans
-  appliquer la prémisse a fait rendre `400` à la veille mensuelle, **deux fois**, la veille
-  n'envoyant pas l'en-tête. Tant que `2025-03-26` est servie, une requête sans en-tête est
-  traitée comme telle. Le jour où elle sera retirée, et seulement ce jour-là, la refuser
-  devient permis — et c'est un *MAY* de la norme, pas un *MUST*.
-- Méthode `initialize` reçue : répondre comme avant, et retenir la version annoncée pour la
-  durée de la requête seulement. Aucun état conservé — c'est une **imitation** de poignée.
-- `notifications/initialized` : `202` vide.
-- Sous une version antérieure à `2026-07-28` : ne pas exiger `Mcp-Method`/`Mcp-Name`, ne pas
-  émettre `resultType`, ne pas émettre `ttlMs`/`cacheScope`.
-
-**Porte de validation.** Une même session d'évaluation doit passer intégralement en
-`2026-07-28`, en `2025-11-25` et en `2025-06-18`, et les connecteurs claude.ai existants doivent
-rester opérationnels sans reconfiguration. Ordre de bascule impératif : **déployer le pont
-avant de retirer quoi que ce soit.** L'ordre inverse a déjà détruit un connecteur (2026-07-25).
+Toute transition vers `limite`, `suspendu` ou `revoque` relève d'une décision humaine explicite de
+l'exploitant consignée en ajout seul dans `registre_gouverne` (`G12`).
 
 ---
 
-## 4. Identité, titulaires, jetons
+## 7. Confidentialité, télémétrie sans contenu et observabilité
 
-### 4.1 Schéma
+1. **Aucune table de contenu :** `forme_requete` est abandonnée ; les anciennes tables `search_log`
+   de `MCP-Legislation` et `MCP-Jurisprudence` cessent immédiatement de recevoir toute écriture en
+   Phase 3 et sont archivées/purgées. `api_usage` est remplacée par `compteur_jour`.
+2. **Plan technique unique sans contenu (`evenement_technique`) et purges Loi 25 (`purgerRetentionsD1`, `supprimerCompteTitulaireD1`) :**
+   horodatage d'`evenement_technique` tronqué à la minute UTC (`AAAA-MM-JJTHH:MM`, contraint par `CHECK (minute GLOB ...)`), code d'erreur
+   contraint par l'union littérale fermée `CodeErreurTechnique`, `client` réduit à `nom/version`
+   nettoyé, rétention stricte de **90 jours** sur `evenement_technique` (`purgerEvenementsTechniquesD1`,
+   index `et_par_minute`) **et** sur `compteur_jour` (`purgerCompteursJourD1`, index `cj_par_jour`, format `AAAA-MM-JJ` contraint par `CHECK`),
+   complétée par les purges indexées des lignes expirées/consommées de `demande_acces` (`30` min),
+   `invitation_acces` (invitations expirées sans titulaire rattaché), `session_portail` (`30` min / `12` h) et `code_oauth` (`300` s, horodatages `AAAA-MM-JJTHH:MM:SS.sssZ` contraints par `CHECK GLOB`), ainsi que par le retrait immédiat de clé (`retirerEntreeCoffreD1`) et la suppression intégrale en cascade d'un compte (`supprimerCompteTitulaireD1`), toutes
+   recensées dans `POLITIQUES_RETENTION_IDENTITE` et vérifiées par `verifierCouvertureRetentionSchema`
+   (`G16`, `G18`, `S20`).
+3. **Observabilité Cloudflare désactivée sur les Workers MCP :** `wrangler.jsonc` déclare
+   explicitement `"observability": { "enabled": false, "logs": { "enabled": false, "invocation_logs": false } }`
+   sur `MCP-Legislation` et `MCP-Jurisprudence` afin qu'aucune URL porteuse de `?key=` ni aucune
+   métadonnée d'invocation ne soit retenue dans les journaux Cloudflare.
+4. **Recherche hybride désarmable (`hybride_permis`) :** activée par défaut (`1`), divulguée dans
+   `/conformite` (mentionnant le traitement d'empreinte vectorielle par Cloudflare Workers AI) et
+   désactivable en un clic dans `/moi`. Lorsque `hybride_permis = 0`, `MCP-Legislation` force la
+   recherche lexicale FTS5 locale sans aucun appel à `env.AI` et le signale dans la réponse.
 
-```sql
--- migrations/xxxx_socle_identite.sql   (identique dans les deux bases)
+---
 
-CREATE TABLE titulaire (
-  id                TEXT PRIMARY KEY,              -- ULID
-  cree_le           TEXT NOT NULL,
-  etat              TEXT NOT NULL DEFAULT 'en_attente'
-                    CHECK (etat IN ('en_attente','actif','surveille','limite',
-                                    'suspendu','revoque','refuse')),
-  -- Identité PROFESSIONNELLE. Nom et numéro de membre sont des renseignements publics
-  -- (Tableau de l'Ordre) et la revue humaine les exige. Rien d'autre n'est collecté.
-  nom               TEXT NOT NULL,
-  numero_membre     TEXT NOT NULL UNIQUE,          -- non vérifiable par machine : cf. §4.4
-  section           TEXT,
-  courriel          TEXT NOT NULL UNIQUE,
-  cabinet           TEXT,
-  attestation_le    TEXT,                          -- horodatage de l'attestation solennelle
-  attestation_ver   TEXT,                          -- version du texte attesté
-  cgu_ver           TEXT,                          -- version des CGU acceptées
-  -- Préférences de confidentialité du titulaire.
-  hybride_permis    INTEGER NOT NULL DEFAULT 1,    -- S19 : recherche sémantique
-  forme_permise     INTEGER NOT NULL DEFAULT 0,    -- S14 : contribution au plan de contenu
-  note_admission    TEXT                           -- ce que l'exploitant a vérifié, et comment
-);
+## 8. Identifiants législatifs et jurisprudentiels (référence Phase 5 ultérieure)
 
-CREATE TABLE jeton (
-  id            TEXT PRIMARY KEY,
-  titulaire_id  TEXT NOT NULL REFERENCES titulaire(id),
-  -- SHA-256 du jeton, en hexadécimal. Le jeton EN CLAIR n'est montré QU'UNE FOIS, à
-  -- l'émission, et n'existe ensuite nulle part.
-  empreinte     TEXT NOT NULL UNIQUE,
-  queue         TEXT NOT NULL,        -- 6 derniers caractères : reconnaître sans divulguer
-  libelle       TEXT NOT NULL,        -- « claude.ai bureau », « Claude Code portable »
-  emis_le       TEXT NOT NULL,
-  expire_le     TEXT,                 -- 365 jours par défaut
-  revoque_le    TEXT,
-  motif_revoc   TEXT,
-  vu_le         TEXT                  -- dernier usage, AU JOUR. Jamais à la seconde.
-);
-CREATE INDEX jeton_actif ON jeton(empreinte) WHERE revoque_le IS NULL;
-```
+- **Législation (FRBR Akoma Ntoso sous domaine propre) :** `/id/qc/loi/{loi}/{lang}@{version}/art_{numero}`
+  (décimaux translittérés `art_2926-1` ; alias AKN en ISO 639-2 `fra`/`eng` et abréviations neutres
+  `bk_`, `tit_`, `chp_`, `art_`). Routes publiques non authentifiées, séparées de `/mcp`.
+- **Jurisprudence :** identifiants CanLII repris tels quels (`databaseId`, `caseId`, citation neutre,
+  URL CanLII), sans frapper d'identifiant sur la donnée de CanLII.
 
-**Correctif A2 — la forme du jeton, qui n'était spécifiée nulle part.** Le schéma ci-dessus
-décrit soigneusement l'empreinte, la queue de six caractères et l'expiration, et ne dit **rien**
-de ce qui est haché. Dans une spécification publique portant sur l'authentification, « non
-spécifié » est la façon dont on se retrouve dans deux ans avec un jeton de douze caractères
-tiré de `Math.random`, sans qu'aucune revue ne l'ait décidé. La forme est donc arrêtée ici :
+---
 
-```ts
-// identite/porteur.ts — LA seule fabrique de jetons du dispositif.
-export function frapperJeton(): string {
-  const octets = new Uint8Array(32);            // 256 bits
-  crypto.getRandomValues(octets);               // CSPRNG du runtime, jamais Math.random
-  return base64url(octets);                     // 43 caractères, sûrs en URL et en en-tête
-}
-```
+## 9. Portail dédié `MCP-Acces` (`https://acces.poirierlavoie.ca`)
 
-- **256 bits.** Le jeton voyage en clair dans une URL (S7, `?key=`) : il ne bénéficie
-  d'aucun secret d'appoint, et il est la totalité du facteur d'authentification. Avec cette
-  taille, la recherche exhaustive cesse d'être une hypothèse à défendre, ce qui est exactement
-  ce qu'on veut, l'étage de débit anonyme (A1) n'étant qu'un filet.
-- **`base64url`, sans remplissage.** Les trois porteurs de S7 sont un segment de chemin, un
-  paramètre de requête et un en-tête : l'alphabet doit traverser les trois sans encodage, sinon
-  `decodeURIComponent` et la comparaison divergent selon le porteur employé.
-- **Aucune structure, aucun préfixe parlant.** Pas de `titulaire_id` encodé, pas d'horodatage :
-  un jeton qui se lit renseigne celui qui l'intercepte, et invite à décider sur son contenu
-  plutôt que sur la table.
-- **Montré une seule fois** (§4.4), puis n'existe plus que sous forme d'empreinte. La queue de
-  six caractères sert à le reconnaître dans la console, jamais à l'identifier au contrôle.
+Worker Cloudflare autonome (nouveau dépôt `MCP-Acces`), consommant `@poirierlavoie/mcp-socle#v0.8.0`,
+lié à `DB_IDENTITE` (`mcp-identite`), au secret `COFFRE_MAITRE_V1`, au secret `CONSOLE_TOKEN` et à
+la liaison Cloudflare Email Sending (`send_email`, expéditeur `noreply@acces.poirierlavoie.ca`).
 
-Un test de garde épingle les trois propriétés — longueur, alphabet, et le fait que
-`frapperJeton` est la seule fonction du socle qui appelle `getRandomValues` pour un jeton.
-
-### 4.2 Résolution
-
-```ts
-// identite/titulaire.ts
-export async function resoudre(db: D1Database, presente: string): Promise<Titulaire | null>;
-```
-
-- Empreinte = `SHA-256(presente)` en hexadécimal minuscule, puis **une** lecture indexée.
-- La comparaison est faite par l'index, sur un condensé : aucune fuite de préfixe n'est
-  possible, contrairement à un `===` sur le jeton lui-même. La comparaison à temps constant de
-  `safeEqual` reste utile pour les secrets d'administration (§9), pas ici.
-- Un jeton expiré, révoqué, ou dont le titulaire n'est pas dans un état servi, est un jeton
-  **inconnu** : même issue, même code, même délai. Aucun oracle.
-- **Fermé par défaut, sans exception.** Aucune configuration ne doit ouvrir le point d'entrée :
-  ni l'absence de secret, ni une table `jeton` vide, ni une erreur de lecture D1. C'est
-  l'inverse du comportement que `legislation` a eu jusqu'au 2026-08-27 (`if (!secret) return onMount ? request`),
-  qui est aussi son seul rollback documenté — d'où la marche 5 de la §11, à lire avant de
-  toucher à `MCP_TOKEN`.
-- `vu_le` est écrit **au plus une fois par jour et par jeton**, dans `ctx.waitUntil`.
-
-### 4.3 Ordre de traitement d'une requête
-
-L'ordre est délibéré à chaque marche, et le motif de chacune est écrit ici parce qu'il n'est
-pas devinable.
-
-1. **Coupe-circuit global, borné au bloc `/mcp` et à `/health`.** `MCP_ENABLED !== "true"` :
-   `404`. **La polarité est celle du dépôt** — variable absente, vide ou mal orthographiée
-   ⇒ service éteint. Ne jamais l'écrire `=== "false"` : ce serait un garde ouvert par défaut
-   sur un service multilocataire. Et le coupe-circuit **ne touche ni `/`, ni les consoles, ni
-   les documents publics** : c'est précisément quand le connecteur est coupé qu'un confrère
-   doit pouvoir lire pourquoi, et retrouver la voie de rétablissement.
-2. **Origine.** Une origine de navigateur présente et non reconnue : `403`, **avant toute
-   authentification** — c'est la défense contre le ré-attachement DNS exigée par la
-   spécification.
-3. **Pré-vol CORS.** Répondu avant l'authentification : le navigateur l'émet sans en-tête
-   d'authentification, et l'exiger casserait tout client de navigateur sans rien protéger.
-4. **Débit anonyme.** Un plafond grossier avant la lecture D1, pour qu'une rafale de requêtes
-   mal authentifiées ne coûte rien. Clé : `CF-Connecting-IP`, **jamais l'empreinte du jeton
-   présenté** — voir le correctif A1 de la §6.1, qui explique pourquoi la clé évidente ne
-   limite rien du tout.
-5. **Identité.** Résolution du porteur. Échec : `404` (S8).
-6. **Méthode — APRÈS l'identité, et c'est délibéré.** `2026-07-28` recommande `405` sur `GET`
-   et `DELETE`, mais un `405` servi avant l'authentification apprend à un anonyme que le point
-   d'entrée existe : c'est exactement l'oracle que S8 refuse. Le connecteur claude.ai émet des
-   `GET /mcp` sans aucun porteur ; ils restent en `404`. Second écart assumé, à côté de S8, avec
-   son test.
-7. **État du titulaire.** `suspendu`, `revoque`, `refuse`, `en_attente` : `404`. `limite` :
-   servi, avec quotas réduits.
-8. **Débit par titulaire.** `429` + `Retry-After`.
-9. **Lecture des compteurs.** Une lecture indexée sur `(titulaire_id, jour)` rend les trois
-   classes d'un coup. On lit ici ; **on ne décide pas encore**.
-10. **Validation des en-têtes** (§3.2), puis de l'enveloppe, puis des arguments.
-11. **Décision de quota**, une fois le nom d'outil connu du **corps** — donc sa classe. Ne
-    jamais décider sur l'en-tête `Mcp-Name` seul : c'est la vulnérabilité que la spécification
-    décrit (l'intermédiaire décide sur l'en-tête, le serveur exécute sur le corps), et
-    l'en-tête n'est pas exigé sous les versions antérieures que §3.3 continue de servir.
-    Dépassement : une **erreur d'outil** typée `QUOTA_EPUISE`, pas un `429` HTTP — le modèle
-    doit pouvoir la lire et l'expliquer au praticien.
-12. **Exécution**, puis journalisation technique dans `ctx.waitUntil`.
-
-**Le pré-vol n'est JAMAIS limité en débit.** Un `429` sur un pré-vol ne remonte au navigateur
-que comme un échec CORS opaque : le connecteur casserait sans que le motif soit lisible nulle
-part. Un test épingle ce comportement dans les deux dépôts.
-
-### 4.4 Admission
-
-Aucune auto-inscription. La console publique n'offre qu'un formulaire de **demande**.
-
-| Champ | Obligatoire | Usage |
+| Route | Public | Fonction |
 |---|---|---|
-| Nom, prénom | oui | vérification au bottin ; `titulaire.nom` |
-| Numéro de membre | oui | vérification ; contrôle de format seulement, jamais d'existence |
-| Section du Barreau | oui | vérification |
-| Courriel | oui | notification ; un domaine de cabinet est un indice, pas une preuve |
-| Attestation solennelle | oui | « je suis membre en règle du Barreau du Québec » — horodatée, versionnée |
-| Acceptation des CGU | oui | version conservée |
+| `GET /` | Public | Page d'accueil expliquant l'admissibilité (Barreau du Québec), le prérequis BYOK CanLII, l'architecture de confidentialité et les liens vers `/demande` et les 5 documents publics |
+| `GET/POST /demande` | Public (limité IP `10/min`) | Formulaire d'admission (§4.3), vérification courriel automatisée et épreuve en direct + scellement de la clé API CanLII |
+| `GET/POST /moi` | Titulaire (lien magique `session_portail`, cookie `HttpOnly; Secure; SameSite=Lax`) | Émission/révocation de jetons (`les_deux`, `legislation`, `jurisprudence`), extraits de configuration prêts à coller (`.mcp.json`, `mcp_config.json`, `claude.ai`, Gemini App/Enterprise, API Deep Research), rotation/retrait/épreuve de la clé CanLII, bascule `hybride_permis`, consultation de sa consommation du jour, export Loi 25 et suppression du compte |
+| `GET/POST /exploitant` | Exploitant (`Authorization: Bearer` sur `CONSOLE_TOKEN` via `memeSecret`) | File d'admission avec saisie de `note_admission` (vérification manuelle au *Bottin des avocats*), gestion des états, `registre_gouverne` et indicateurs d'anomalies sans contenu |
+| `GET /.well-known/oauth-authorization-server`<br>`GET/POST /oauth/authorize`<br>`POST /oauth/token`<br>`POST /oauth/revoke` | Clients OAuth 2.1 | Serveur d'autorisation OAuth 2.1 avec PKCE `S256` obligatoire, support CIMD anti-SSRF et clients pré-inscrits (`claude.ai`, `gemini.google.com`, Vertex AI Gemini Enterprise, boucle locale CLI) |
 
-La revue est **humaine et manuelle** : il n'existe aucune interface machine du Tableau de
-l'Ordre, et la vérification passe par le Registrariat. Ne pas implémenter de vérification
-automatique, ne pas moissonner le bottin, ne pas laisser croire dans l'interface qu'une
-vérification a eu lieu quand elle n'a pas eu lieu. `note_admission` consigne ce qui a été
-vérifié et comment : c'est la seule trace de diligence.
-
-À l'approbation : émission d'un jeton, affiché **une seule fois**, accompagné de l'URL de
-connecteur prête à coller pour chacun des trois porteurs (S7).
+Politique CSP stricte sur toutes les pages HTML : zéro police, script, image ou feuille de style
+chargés depuis un domaine tiers.
 
 ---
 
-## 5. Coffre de clefs CanLII
+## 10. Documents publics de gouvernance et licence (`acces.poirierlavoie.ca`)
 
-> ⚠ **LIEU D'IMPLANTATION NON ARRÊTÉ depuis le 2026-09-17.** Le répertoire `src/coffre/` a
-> été supprimé du socle : il ne contenait qu'un `LISEZ-MOI`, et la portée du socle a été
-> resserrée sur l'identité et le transport (S1 amendée). La CONCEPTION ci-dessous reste
-> valide en entier ; seuls les chemins qu'elle cite sont désormais indicatifs. Le coffre ne
-> remontera au socle qu'à la condition nouvelle du `CLAUDE.md` — un besoin mesuré — et il
-> dépend de toute façon du titulaire, qui n'existe pas encore.
-
-### 5.1 Schéma
-
-```sql
-CREATE TABLE coffre_canlii (
-  titulaire_id  TEXT PRIMARY KEY REFERENCES titulaire(id),
-  version       INTEGER NOT NULL,     -- sélectionne COFFRE_MAITRE_V{n} : rotation sans réécriture
-  iv            BLOB NOT NULL,        -- 12 octets, tiré au hasard à chaque pose
-  chiffre       BLOB NOT NULL,        -- AES-256-GCM, marque d'authenticité incluse
-  repere        TEXT NOT NULL,        -- 4 premiers + 4 derniers + 8 hex de SHA-256. NON réversible.
-  pose_le       TEXT NOT NULL,
-  eprouve_le    TEXT,                 -- dernier appel témoin réussi
-  etat          TEXT NOT NULL CHECK (etat IN ('valide','refusee','inconnue'))
-);
-```
-
-### 5.2 Chiffrement
-
-```
-DEK = HKDF-SHA256(ikm = COFFRE_MAITRE_V{n}, salt = titulaire_id, info = "canlii/v1")
-chiffre = AES-256-GCM(DEK, iv, clair, aad = titulaire_id || ":canlii:" || version)
-```
-
-La donnée additionnelle authentifiée liée au titulaire fait qu'une ligne recopiée sur un autre
-compte **ne se déchiffre pas** : une erreur de restauration ou une exfiltration partielle ne
-donne pas une clef utilisable ailleurs. `COFFRE_MAITRE_V1` est posé par
-`wrangler secret put` et ne vit ni dans la base, ni dans `wrangler.jsonc`, ni sur disque.
-
-### 5.3 L'invariant qui compte
-
-```ts
-// coffre/canlii.ts — LA SEULE porte vers le texte clair.
-export async function ouvrirClientCanlii(
-  db: D1Database, titulaire: Titulaire, entete: string | null, env: Env,
-): Promise<CanliiClient>;                 // JAMAIS Promise<string>
-```
-
-Le texte clair vit dans une fermeture, le temps de fabriquer le client, et n'est **jamais** une
-valeur que le reste du code peut tenir, renvoyer ou journaliser. Aucune autre fonction du dépôt
-ne déchiffre. Trois tests de garde :
-
-1. Le module d'ACCÈS du coffre est le seul qui importe le module de CHIFFREMENT (chemins indicatifs : voir l'avertissement en tête de §5).
-2. Aucune signature exportée du dépôt ne rend une clef — `grep` de retour `string` sur les
-   symboles dont le nom contient `clef`, `key`, `secret`.
-3. La suite existante `redactUrl` est généralisée en `expurger()` et appliquée à **toute**
-   chaîne journalisée. Le test capital de `test/client.test.ts` — la clef n'apparaît dans
-   aucune sortie journalisable — est étendu au coffre, à l'en-tête `X-Clef-CanLII` et aux
-   messages d'erreur.
-
-### 5.4 Pose, épreuve, retrait
-
-- **Pose** : uniquement par la console du titulaire, sur session authentifiée, en `POST`. Un
-  appel témoin inoffensif (`caseBrowse/fr/`) confirme que la clef fonctionne **avant**
-  l'écriture. En cas de `401`/`403` de CanLII, rien n'est écrit et le motif est rendu.
-- **Ordre de résolution** à l'appel : en-tête `X-Clef-CanLII` (S11), puis coffre, puis
-  `CLEF_ABSENTE`. **Aucune retombée sur la clef de l'exploitant** (S12) — un test l'épingle en
-  posant `CANLII_API_KEY` et en vérifiant qu'un titulaire sans clef échoue quand même.
-- **Épreuve périodique** : le cron hebdomadaire tente un appel témoin par clef `valide` non
-  éprouvée depuis 30 jours et bascule à `refusee` le cas échéant, avec notification. Une clef
-  révoquée par CanLII qui ne se découvre qu'au milieu d'une recherche est une mauvaise
-  expérience évitable.
-- **Retrait** : suppression de la ligne. Aucune conservation, aucune corbeille.
-- **Étranglement par clef, non par invocation.** `CANLII_MIN_INTERVAL_MS` reste par invocation,
-  mais `CANLII_MAX_CALLS_PER_INVOCATION` est doublé d'un budget **journalier par titulaire**
-  (§6.2). Sinon un confrère peut faire étrangler sa propre clef en une minute.
-
----
-
-## 6. Gouverne : débit, quotas, comportement, états
-
-### 6.1 Étage 1 — débit à l'arête
-
-Le limiteur Cloudflare existant de `jurisprudence` est **modifié**, non repris tel quel : sa
-clé est aujourd'hui `CF-Connecting-IP`, et elle devient `titulaire_id` (S15). Le client est
-claude.ai : l'adresse source est celle d'Anthropic, et limiter dessus punit tous les titulaires
-ensemble sans en attribuer un seul. Le commentaire de `wrangler.jsonc` change avec la clé.
-
-**Quatre espaces exigent quatre bindings.** Le plafond ne vit pas dans l'appel mais dans
-`ratelimits.simple.{limit,period}` : les quatre lignes ci-dessous sont quatre bindings
-distincts, avec quatre `namespace_id` — et **les deux dépôts doivent cesser d'employer le même
-`namespace_id` `"1001"`**, qu'ils portent tous deux aujourd'hui.
-
-| Espace | Clé | Plafond de départ | Réponse |
-|---|---|---|---|
-| anonyme | `CF-Connecting-IP` (**A1**) | 20 / min | `404` |
-| échecs cumulés | constante globale `"echecs"` (**A1**) | 300 / min | `404` |
-| titulaire | `titulaire_id` | 60 / min | `429` + `Retry-After: 60` |
-| titulaire `limite` | `titulaire_id` | 10 / min | `429` + `Retry-After: 300` |
-
-Le limiteur d'arête est approximatif et par centre de données : c'est une propriété assumée. Il
-ne sert pas à compter, il sert à ce qu'une boucle ne coûte rien.
-
-**Correctif A1 — pourquoi la clé anonyme n'est PAS l'empreinte du jeton.** La première
-rédaction fondait la clé de l'étage anonyme sur l'empreinte du jeton présenté. C'est la clé évidente, et
-elle ne limite **rien** : qui essaie un million de jetons produit un million d'empreintes
-distinctes, donc un million de compteurs à 1. Le seuil n'est jamais atteint, et chaque essai
-traverse le limiteur jusqu'à la lecture D1 — soit exactement l'inverse du but énoncé à la §4.3
-marche 4, qui est qu'une rafale mal authentifiée ne coûte rien.
-
-La clé doit être une chose que l'appelant ne peut pas faire varier à volonté. Pour un
-**titulaire**, c'est `titulaire_id` ; l'adresse serait celle d'Anthropic (S15). Pour un
-**inconnu**, c'est l'inverse : il n'a pas de `titulaire_id` — c'est précisément ce qu'il
-cherche — et il appelle de chez lui. `CF-Connecting-IP` redevient donc la bonne clé, et la
-seule, à cet étage-là et à aucun autre.
-
-Le second espace est un **filet contre la distribution** : une seule fenêtre globale comptant
-les refus, toutes adresses confondues. Il ne protège pas d'un attaquant patient ; il borne le
-coût d'une rafale répartie. Il est **grossier à dessein** — s'il se déclenche, le service refuse
-tout le monde pendant une minute, ce qui est un incident à traiter, non un régime de
-fonctionnement. Le plafond de départ (300/min) est donc très au-dessus du trafic légitime de
-refus attendu.
-
-Ces deux étages ne protègent que dans la mesure où le jeton lui-même est hors de portée : c'est
-l'objet du correctif A2 (§4.1).
-
-**Le WAF de la zone arrive avant lui.** L'invariant 9 de `legislation` consigne que le WAF
-bloque les rafales de `POST` non-navigateur sur le domaine personnalisé — c'est ce qui a forcé
-le rattrapage des vecteurs à passer par `workers.dev`. Un confrère en Claude Code appelle de
-serveur à serveur : il rencontrera cette règle **avant** tout limiteur applicatif, et le refus
-ne ressemblera à rien de ce que ce document décrit. À vérifier et à ajuster avant l'ouverture,
-et à retenir pour le rejeu de fixtures de la §8.5.
-
-### 6.2 Étage 2 — quotas journaliers
-
-```sql
-CREATE TABLE compteur_jour (
-  titulaire_id  TEXT NOT NULL,
-  jour          TEXT NOT NULL,       -- AAAA-MM-JJ, UTC
-  classe        TEXT NOT NULL CHECK (classe IN ('local','sortant','semantique')),
-  appels        INTEGER NOT NULL DEFAULT 0,
-  erreurs       INTEGER NOT NULL DEFAULT 0,
-  introuvables  INTEGER NOT NULL DEFAULT 0,
-  sortants      INTEGER NOT NULL DEFAULT 0,
-  PRIMARY KEY (titulaire_id, jour, classe)
-);
-```
-
-**`INSERT ... ON CONFLICT DO UPDATE`, jamais `INSERT OR REPLACE`.** La forme de l'invariant 1
-de `jurisprudence` vaut ici, mais **pas son motif** : là-bas, `REPLACE` change le `rowid` et
-fait diverger en silence l'index FTS5 en *external content* sur `cases`. Il n'y a pas de FTS
-sur `compteur_jour`. Le motif ici est plus simple : `REPLACE` remet les colonnes omises à leur
-défaut, donc écrase les compteurs des autres classes.
-
-| Classe | Outils | Plafond `actif` | Plafond `limite` |
-|---|---|---|---|
-| `local` | `qclaw_*` lexicaux, `qclaw_find_relevant` (classement **déterministe**, aucun appel à Workers AI), `greffe_*`, `palais_*`, `canlii_parse_citation` | 1 000 / jour | 100 |
-| `sortant` | tout `canlii_*` qui appelle l'API | 200 / jour | 20 |
-| `semantique` | `qclaw_search_text` **seulement**, en mode hybride | 100 / jour | 10 |
-
-La lecture du compteur est **une** lecture indexée en début de requête ; l'incrément est
-différé dans `ctx.waitUntil`. Un léger dépassement est donc possible sur une rafale
-concurrente : propriété assumée, à documenter, non à corriger par une transaction qui
-coûterait plus que le dépassement.
-
-### 6.3 Étage 3 — score de comportement
-
-Calculé par le cron nocturne, **exclusivement** sur `compteur_jour` et `evenement_technique`.
-Aucun signal ne lit un contenu de requête ; c'est ce qui rend l'exigence 3 compatible avec
-l'exigence 1.
-
-**Le dépôt du socle est public.** La ligne de partage est donc la suivante, et ce n'est pas un
-compromis boiteux entre deux exigences : les deux moitiés sont voulues.
-
-| Public | Secret |
-|---|---|
-| **Ce qui est mesuré** : la liste des signaux, leur définition, la colonne qu'ils lisent | **À partir de quelle valeur** un signal est réputé franchi |
-| **Ce qui arrive ensuite** : les états, qui décide, la voie de rétablissement | **Quelle combinaison** de signaux déclenche une proposition |
-
-La première colonne n'est pas seulement tolérable, elle est **due**. Un confrère a le droit de
-savoir ce qui est mesuré à son sujet et à quelle fin — c'est une obligation de transparence
-avant d'être une politesse —, et un service qui mesure en silence ne mérite pas qu'on lui confie
-une recherche. La seconde n'apporte rien à personne, sauf à celui qui veut se régler juste en
-dessous.
-
-| Signal | Mesure | Ce qu'il trahit |
+| Document | Route sur `acces.poirierlavoie.ca` | Source et contenu obligatoire |
 |---|---|---|
-| Volume | `appels` par classe sur 24 h, rapporté au plafond | usage industriel |
-| Taux d'échec | `erreurs / appels` | intégration fautive, ou sondage |
-| Taux d'introuvable | `introuvables / appels` | **énumération d'identifiants** |
-| Concentration | appels par minute active, et minutes actives consécutives | **automate, moissonnage** |
-| Clients concurrents | `clientInfo` distincts par jeton et par jour | **jeton partagé** |
-| Densité nominative | part de `canlii_find_case` dans les appels | recherche de personnes en masse |
-
-**Aucune colonne « seuil » ici, et aucune valeur nulle part ailleurs dans le dépôt.** Le tableau
-dit ce qu'on regarde ; il ne dit pas où est la barre.
-
-**Deux signaux séduisants ont été retirés, et il faut savoir pourquoi.** La *cardinalité
-d'identifiants distincts par heure* supposerait de conserver les identifiants demandés par
-titulaire : c'est du contenu de requête, que S13 interdit, et qu'aucune colonne ne porte. Une
-empreinte salée n'y changerait rien — l'espace des identifiants de décision est petit, donc
-inversible par dictionnaire. La *régularité des intervalles* au seuil de 200 ms est impossible
-sur un horodatage à la minute, et descendre à la seconde rouvrirait la jointure temporelle que
-la §7.3 ferme. Le moissonnage se détecte donc par la conjonction du taux d'introuvable, du
-volume et de la concentration — moins fin, mais compatible avec l'exigence 1. C'est le prix de
-S13, et il est assumé.
-
-**Où vivent les seuils.** Dans un secret `SEUILS_GOUVERNE`, posé par `wrangler secret put` —
-**jamais** dans les `vars` de `wrangler.jsonc` : dans un dépôt public, tout ce qui est dans
-`wrangler.jsonc` est publié par construction, et c'est précisément l'erreur que la première
-rédaction de cette section commettait. Le secret porte un document JSON versionné, validé contre
-un schéma au démarrage. La forme est publique ; les valeurs, marquées `…` ici, ne le sont pas :
-
-```jsonc
-{
-  "version": 1,
-  "signaux": {
-    "volume":        { "facteur_plafond": …, "jours": … },
-    "echec":         { "part": …, "appels_min": … },
-    "introuvable":   { "part": …, "appels_min": … },
-    "concentration": { "appels_par_minute": …, "minutes": … },
-    "clients":       { "distincts": … },
-    "nominative":    { "part": …, "appels_min": … }
-  },
-  "proposition": { "surveille": …, "limite": … }   // nombre de signaux franchis
-}
-```
-
-**Secret absent ou invalide = observation seule, et bruyamment.** Le cron calcule alors les
-signaux, les écrit au registre avec `auteur = 'automate'` et `vers = de` — donc sans changer
-d'état — et émet un avertissement à chaque exécution. Il ne dégrade **jamais** personne sur des
-valeurs devinées : un défaut compilé serait à la fois public et arbitraire, soit le pire des
-deux mondes. Un service qui ne sait pas où est sa barre ne coupe l'accès de personne.
-
-**Conséquence sur les tests, à respecter dès la première ligne.** La fonction de score prend ses
-seuils **en paramètre** ; elle ne lit jamais l'environnement elle-même. Les tests en injectent
-d'arbitraires, et aucune fixture n'encode de valeur réelle. La porte G26 échoue si un littéral
-numérique de seuil réapparaît dans `gouverne/score.ts` ou dans `wrangler.jsonc`.
-
-**Ce que la page `/gouverne` publie.** Les quotas, à la valeur exacte — le titulaire doit pouvoir
-s'y conformer. La liste des signaux ci-dessus, à la définition exacte. Les états, qui décide, et
-la voie de rétablissement. Et la mention **écrite** que les valeurs de franchissement ne sont pas
-publiées, avec son motif : dire qu'on ne dit pas vaut mieux que laisser croire qu'il n'y a rien.
-
-**Ce qui reste exposé, et qu'il faut assumer.** Publier la liste des signaux apprend à qui veut
-abuser *quelles dimensions* surveiller — étaler dans le temps, varier les outils, ne pas
-énumérer. C'est exact, et c'est le prix de la transparence due au confrère. La protection réelle
-n'a jamais été le secret de cette liste : ce sont les seuils, la revue humaine à l'admission, et
-le fait qu'un compte révoqué ne se remplace pas par une réinscription.
-
-### 6.4 États et registre
-
-```
-en_attente ──approbation──> actif ⇄ surveille ⇄ limite ──décision humaine──> suspendu
-     │                                                                          │
-     └──refus──> refuse                                        révocation ──> revoque
-```
-
-```sql
-CREATE TABLE registre_gouverne (
-  id            INTEGER PRIMARY KEY AUTOINCREMENT,
-  titulaire_id  TEXT NOT NULL REFERENCES titulaire(id),
-  le            TEXT NOT NULL,
-  de            TEXT NOT NULL,
-  vers          TEXT NOT NULL,
-  motif         TEXT NOT NULL,      -- CODE du registre des motifs, jamais un texte libre
-  auteur        TEXT NOT NULL CHECK (auteur IN ('automate','exploitant')),
-  signaux       TEXT,               -- JSON des signaux franchis, chiffres seulement
-  notifie_le    TEXT
-);
-```
-
-**En ajout seul.** Aucune mise à jour, aucune suppression ; un test épingle l'absence de tout
-`UPDATE registre_gouverne` et de tout `DELETE FROM registre_gouverne` dans le dépôt.
-
-`actif ⇄ surveille ⇄ limite` : l'automate décide. `suspendu` et `revoque` : **l'exploitant
-seul** (S16), et la transition écrit la notification au titulaire. La voie de rétablissement
-est publiée dans les CGU : demande écrite, réponse dans les cinq jours ouvrables, motif donné.
-
-### 6.5 Coupe-circuits
-
-| Portée | Variable ou champ | Effet |
-|---|---|---|
-| Global | `MCP_ENABLED !== "true"` — **fermé par défaut** | `404` sur le bloc `/mcp` et `/health`. **Jamais** sur `/`, les consoles ni les documents publics |
-| Par outil | `OUTILS_HORS_SERVICE = "canlii_find_case,…"` | l'outil disparaît de `tools/list` et rend `HORS_SERVICE` |
-| Par titulaire | `titulaire.etat` | §6.4 |
-| Sortant | `CANLII_HORS_SERVICE = "true"` | tous les `canlii_*` rendent `AMONT_HORS_SERVICE` ; les locaux servent |
-| Sémantique | `hybride_permis` (par titulaire) ou `HYBRID_SEARCH` (global) | repli lexical, **annoncé** dans la sortie |
+| Conditions d'utilisation | `/cgu` | Rédigé et versionné : **Autorisation de pratique professionnelle du droit** (permettant les mandats clients rémunérés des membres en règle du Barreau du Québec tout en interdisant toute revente LegalTech/SaaS), fourniture « tel quel », absence totale de SLA, préavis de fermeture, divulgation explicite que l'exploitant est un avocat plaideur en exercice, responsabilité exclusive de vérification des sources primaires et voie écrite de rétablissement (réponse sous 5 jours ouvrables) |
+| Politique de confidentialité | `/confidentialite` | Rédigé et versionné (Loi 25) : responsable de la protection des RP, finalités limitées à l'admission et à la sécurité, absence de collecte du contenu des recherches, droits d'accès/portabilité/suppression dans `/moi` |
+| Attestation solennelle | `/attestation` | Rédigé et versionné : déclaration d'inscription active en règle au Tableau de l'Ordre du Barreau du Québec et de détention légitime d'une clé API CanLII personnelle |
+| Fiche de conformité | `/conformite` | **Dérivée du code (`S20`, `G18`)** via `POLITIQUES_RETENTION_IDENTITE` : sous-traitants (Cloudflare D1/Workers, Workers AI désarmable via `hybride_permis`, API CanLII en BYOK), inventaire exhaustif des 11 tables de `DB_IDENTITE` et durées de rétention exactes (`90` jours sur `evenement_technique` et `compteur_jour`, `30` min sur `demande_acces` et liens magiques, `12` h sur `session_moi`, `300` s sur `code_oauth`), chiffrement par enveloppe et empreinte HMAC du coffre, désactivation d'`observability` et preuve de ce que l'exploitant ne peut **pas** lire |
+| Registre de gouverne | `/gouverne` | **Dérivée du code (`S20`)** : quotas journaliers exacts (`1 500` / `200` / `150` ; `150` / `20` / `15`), plafonds de débit d'arête, états de compte et procédure contradictoire de rétablissement |
 
 ---
 
-## 7. Journal en deux plans
+## 11. Ordre de migration sans coupure
 
-### 7.1 Plan technique — porte le titulaire, ne porte aucun contenu
+**Règle d'or :** *ajouter d'abord, servir les deux, vérifier en conditions réelles, retirer ensuite.*
 
-```sql
-CREATE TABLE evenement_technique (
-  id            INTEGER PRIMARY KEY AUTOINCREMENT,
-  titulaire_id  TEXT NOT NULL,
-  jeton_id      TEXT NOT NULL,
-  minute        TEXT NOT NULL,      -- AAAA-MM-JJTHH:MM. JAMAIS la seconde.
-  outil         TEXT NOT NULL,
-  classe        TEXT NOT NULL CHECK (classe IN ('local','sortant','semantique')),
-  issue         TEXT NOT NULL CHECK (issue IN ('ok','introuvable','erreur_usager',
-                                               'erreur_amont','refus','quota')),
-  code          TEXT,               -- code du registre d'erreurs. JAMAIS un message libre.
-  ms            INTEGER,
-  sortants      INTEGER NOT NULL DEFAULT 0,
-  client        TEXT                -- clientInfo : nom et version. Rien d'autre.
-);
-CREATE INDEX et_par_titulaire ON evenement_technique(titulaire_id, minute);
-```
-
-```ts
-// journal/technique.ts — l'invariant S13 est PORTÉ PAR LE TYPE.
-export interface EvenementTechnique {
-  titulaire_id: string;  jeton_id: string;  minute: string;
-  outil: string;         classe: Classe;    issue: Issue;
-  code?: CodeErreur;     // union littérale FERMÉE — pas `string`
-  ms?: number;           sortants?: number; client?: string;
-}
-```
-
-`code` est une union de littéraux, non une chaîne : il est **impossible** d'y verser un
-fragment de requête sans que le compilateur refuse. C'est la forme forte de l'invariant.
-
-**Rétention : 90 jours.** Purge par le cron, sans exception ni dérogation.
-
-### 7.2 Plan de contenu — porte une forme, ne porte aucun titulaire
-
-```sql
-CREATE TABLE forme_requete (
-  id       INTEGER PRIMARY KEY AUTOINCREMENT,
-  jour     TEXT NOT NULL,           -- AAAA-MM-JJ. Aucune heure.
-  outil    TEXT NOT NULL,
-  forme    TEXT NOT NULL,           -- produit par expurgerForme(). Testé.
-  verdict  TEXT,
-  n        INTEGER NOT NULL DEFAULT 1,
-  UNIQUE (jour, outil, forme, verdict)
-);
-```
-
-Aucune colonne de titulaire, aucune colonne de jeton, aucune heure. L'agrégation par `n`
-réduit encore la liaison possible. Alimenté **uniquement** si `titulaire.forme_permise = 1`,
-lequel vaut `0` par défaut : un confrère ne contribue au réglage de l'analyseur que s'il y
-consent.
-
-```ts
-// journal/forme.ts
-export function expurgerForme(brut: string): string;
-```
-
-Conserve : l'année, le code de tribunal, le numéro de décision, la structure de ponctuation,
-les identifiants d'éditeur (`J.E.`, `REJB`, `EYB`, `AZ`). Remplace par `[NOM]` : toute suite de
-mots capitalisés hors vocabulaire connu, tout `X c. Y`, toute initiale suivie d'un point. Sur
-échec de reconnaissance, l'entrée est **abandonnée**, pas conservée en clair. Défaut de
-prudence délibéré : mieux vaut perdre une donnée de réglage qu'un nom.
-
-### 7.3 Test de garde sur le schéma
-
-Un test lit `migrations/` et **échoue** dans deux cas.
-
-1. Une table déclare à la fois une colonne `titulaire_id` (ou `jeton_id`, ou `courriel`) et une
-   colonne de texte non contrainte par un `CHECK ... IN (...)`.
-2. Une table portant du texte libre déclare un horodatage **plus fin que le jour**. C'est le
-   cas que les deux `search_log` existantes illustrent : sans titulaire, elles passeraient le
-   premier contrôle, alors qu'un horodatage à la seconde suffit à les rejoindre à
-   `evenement_technique` par la minute et à ré-identifier l'auteur d'une requête. `forme_requete`
-   respecte déjà la règle ; elle n'était pas écrite.
-
-C'est le contrôle qui rend l'invariant S13 durable après le départ de son auteur.
-
-### 7.4 Le sort de la `search_log` existante
-
-**Il y en a deux, et le document a d'abord manqué la seconde.** Celle de `jurisprudence` porte
-les chaînes de citation, noms de parties compris. Celle de `legislation`
-(`migrations/0001_search_log.sql`, colonne `query TEXT NOT NULL`, alimentée par `logSearch` de
-`src/lib.ts` à **chaque** appel de `search_text` et `find_relevant`) porte le texte des requêtes
-de recherche — les mêmes chaînes qui partent vers Workers AI. Elle est dépouillée par
-`scripts/journal.mjs`, et l'invariant 7 du dépôt exige que tout repli y soit consigné : la
-retirer casse cet invariant, donc la décision doit être explicite et l'invariant réécrit.
-
-Pour chacune, avant la phase 2 : renommer en `search_log_exploitant`, cesser toute écriture
-depuis le chemin d'exécution multilocataire, et arrêter par décision explicite si elle est
-purgée ou conservée. Ne pas laisser la question se régler par défaut. `api_usage` migre vers
-`compteur_jour`.
-
-### 7.5 Observabilité Cloudflare
-
-`observability: { enabled: true }` reste. Les invariants existants sont **étendus, non
-assouplis** : ne jamais journaliser `request.url` (le jeton voyage dans le chemin et dans la
-requête, S7), ni un corps JSON-RPC, ni un argument d'outil, ni un en-tête `Authorization` ou
-`X-Clef-CanLII`. On journalise la **méthode**, le **nom d'outil**, le **code d'issue** et le
-**titulaire** — rien d'autre. Un test parcourt tous les appels à `console.*` et échoue si
-l'argument n'est pas une chaîne littérale ou une valeur d'un type sûr énuméré.
+1. **Publier `@poirierlavoie/mcp-socle#v0.8.0` (Phase 1 — fait).** Aucun Worker en production n'est encore modifié.
+2. **Déployer `mcp-identite` (`DB_IDENTITE`) et `MCP-Acces` (`acces.poirierlavoie.ca`) (Phase 2).** Créer votre propre compte `titulaire` d'exploitant, déposer votre clé CanLII dans `coffre_clef`, frapper votre jeton individuel `les_deux` et tester le flux OAuth 2.1 de bout en bout hors production.
+3. **Mettre à niveau `MCP-Legislation` et `MCP-Jurisprudence` en coexistence (Phase 3a).** Lier `DB_IDENTITE`, ouvrir `/mcp/oauth` et `/.well-known/oauth-protected-resource*`, accepter sur `/mcp` les jetons D1 **en parallèle** des secrets actuels (`MCP_TOKEN`, `MCP_TOKEN_VEILLE`, `MCP_SHARED_SECRET`), désactiver `observability` / `invocation_logs`, cesser toute écriture dans `search_log`, activer les nouveaux limiteurs à `namespace_id` distincts et régler le WAF de zone.
+4. **Basculer vos propres clients sur votre jeton de `titulaire` (et OAuth 2.1), puis retirer les secrets personnels hérités (Phase 3b).** Vérifier que `CLEF_ABSENTE` est bien retournée à un titulaire d'essai sans clé alors même que le cache D1 contient des arrêts (`G8`), puis supprimer `CANLII_API_KEY`, `MCP_TOKEN` et `MCP_SHARED_SECRET` (en ne conservant que `MCP_TOKEN_VEILLE` si la veille CI l'utilise, ou un jeton de titulaire dédié `legislation`).
+5. **Aligner `droit-civil-quebecois` et `MCP-Outils`, puis ouvrir graduellement (Phase 4).** Mettre à jour les `README.md`, `SECURITY.md`, `LICENSE` et guides Deep Research, exécuter `verifier_tout.py --mode live`, puis ouvrir la file d'admission `/demande`.
 
 ---
 
-## 8. Identifiants
-
-> ⛔ **CETTE SECTION S'APPELAIT « SORTIE STRUCTURÉE » ET A ÉTÉ AMPUTÉE LE 2026-09-18.**
->
-> Quatre sous-sections ont été retirées avec S5 : **8.1 L'enveloppe**, **8.3 Surface
-> `resources/`**, **8.4 Registre des codes de garde** (les quatorze codes) et **8.5 Contrat
-> éprouvable par un tiers**. Elles décrivaient une sortie qui a été construite, servie en
-> production une journée, mesurée, puis retirée.
->
-> **La mesure, puisque c'est elle qui a tranché** (`legislation`, 2026-09-17) :
-> `tools/list` passait de 12 279 à 43 145 octets — de ~3 070 à ~10 786 jetons **par
-> session** — dont 78 % n'étaient pas de la prose utile mais le squelette d'enveloppe
-> (provenance, gardes, pagination) répété à l'identique dans les dix schémas. Sur
-> `get_article`, l'enveloppe pesait 27 % de la réponse, soit 72 % de la taille des données
-> qu'elle entourait.
->
-> **Pourquoi c'était le mauvais marché.** Un `outputSchema` sert un lecteur qui lit des
-> schémas. Le lecteur réel est un modèle, qui lit la prose française ; le destinataire est
-> un avocat, qui sait déjà qu'une recherche CanLII n'est pas un citateur. Étiqueter chaque
-> risque pour un lecteur averti coûte des jetons et n'achète rien.
->
-> **L'invariant 4 de `jurisprudence` n'est donc pas renversé : il est CONFIRMÉ**, et sa
-> condition (1) — « un consommateur identifié, qui existe et LE DEMANDE » — remplace
-> « partout » comme critère, parce qu'elle est falsifiable.
->
-> Ce qui SUBSISTE de la sortie : `legislation` émet une charge `structuredContent` **plate**
-> sur ses dix outils, antérieure au socle, sans `outputSchema` ni contrat publié. Ses
-> harnais la lisent. Elle ne bouge pas.
->
-> **Ce qui suit — les identifiants — a été CONSERVÉ délibérément.** Nommer un texte de façon
-> stable est une question qui se pose que la sortie soit typée ou non, et l'analyse qui suit
-> a coûté cher. Elle ne promet aucune enveloppe.
-
-
-
-**Législation — frappés, sur le patron FRBR d'Akoma Ntoso.**
-
-| Niveau | Forme | Exemple |
-|---|---|---|
-| Œuvre | `/id/qc/loi/{loi}` | `/id/qc/loi/ccq` |
-| Expression | `/id/qc/loi/{loi}/{lang}@{version}` | `/id/qc/loi/ccq/fr@2026-04-01` |
-| Article | `…/art_{numero}` | `/id/qc/loi/ccq/fr@2026-04-01/art_1457` |
-| Division | `…/{eId}` | `/id/qc/loi/ccq/fr@2026-04-01/bk_5__tit_1__chp_3` |
-| Alias AKN | `/akn/ca-qc/act/{aaaa-mm-jj}/{numero}/{lng3}@{version}/!main#{eId}` | `/akn/ca-qc/act/1991-12-18/64/fra@2026-04-01/!main#bk_5__tit_1__chp_3` |
-
-**Trois points à vérifier contre le document OASIS avant de frapper le moindre alias**, faute
-de quoi ne pas l'appeler « AKN » : la langue s'exprime au niveau de l'expression en ISO 639-2
-à **trois** lettres (`fra`, `eng` — non `fr`) ; l'IRI d'œuvre porte la **date et le numéro** de
-la loi, non son sigle usuel ; et les `eId` emploient les abréviations **neutres** de la norme
-(`bk_`, `tit_`, `chp_`, `art_`), non des abréviations françaises — `liv_5` n'en est pas une.
-Le chemin `/id/…` sous votre domaine, lui, reste libre : c'est le vôtre.
-
-Les décimaux du C.c.Q. (`2926.1`, `132.0.1`) se translittèrent `art_2926-1` et `art_132-0-1` :
-le point est réservé aux extensions. La recodification 2016 du C.p.c. porte l'expression, pas
-l'œuvre — `cpc/fr@2016-01-01` et `cpc/fr@2026-04-01` sont deux expressions de la même œuvre, et
-l'ancien C.p.c. est une **œuvre distincte** (`cpc-1965`) si le corpus le couvre un jour.
-
-**Jurisprudence — jamais frappés.** Les identifiants de CanLII font autorité : rendre
-`databaseId`, `caseId`, la citation neutre et l'URL CanLII tels quels, plus une
-`citation_normalisee` au *Manuel canadien de la référence juridique*. Ne frapper que sur ce dont
-le connecteur est la source : `/id/qc/greffe/500`, `/id/qc/palais/montreal`,
-`/id/qc/district/montreal`.
-
-**Déréférençables, et c'est le point.** `GET` sur un identifiant négocie le contenu :
-`text/html` pour l'humain, `application/ld+json` pour la machine, `application/xml`
-(Akoma Ntoso) pour l'outil juridique, avec un en-tête
-`Link: <…>; rel="describedby"; type="application/ld+json"`. Un identifiant qu'on ne peut pas
-résoudre n'est pas un identifiant : c'est une chaîne.
-
-Ces routes sont **publiques et non authentifiées** — le corpus législatif est le texte
-officiel. Elles ne portent aucun jeton, ne lisent jamais `request.url` dans un journal, et
-sont mises en cache à l'arête sur une clé synthétique (le piège du cache local de miniflare est
-déjà documenté dans `legislation/src/index.ts` : le relire avant d'itérer sur ces routes).
-
-## 9. Consoles
-
-Deux surfaces HTML distinctes, **hors** du bloc `/mcp`, chacune avec son propre secret.
-
-| Route | Pour | Authentification |
-|---|---|---|
-| `/demande` | public | aucune — formulaire de demande (§4.4), limité en débit par IP, ici légitimement |
-| `/moi` | titulaire | jeton de session court, obtenu par lien magique envoyé au courriel du titulaire |
-| `/exploitant` | vous | `Authorization: Bearer` sur `CONSOLE_TOKEN`, comparaison à temps constant |
-
-**`/moi`** : voir ses jetons (libellé, queue, dernier usage au jour), en émettre, en révoquer ;
-poser, éprouver et retirer sa clef CanLII ; voir ses quotas et sa consommation du jour ;
-désarmer la recherche sémantique ; consentir ou non au plan de contenu ; télécharger ce que le
-service détient de lui ; demander la suppression de son compte. Les quatre derniers points sont
-des obligations de la Loi 25, pas des agréments.
-
-**`/exploitant`** : la file des demandes, avec approbation, refus et `note_admission` ; la liste
-des titulaires et de leurs états ; le registre de gouverne ; les propositions de l'automate à
-confirmer ; les compteurs agrégés. **Aucune vue ne rend un contenu de requête**, parce
-qu'aucune table n'en porte un qui soit rattaché à un titulaire (S13). C'est ce qui rend
-l'atténuation du conflit d'intérêts crédible : il n'y a rien à lire.
-
-Chaque console applique la même politique de sécurité de contenu que la page publique — rien
-n'est chargé d'un tiers, ni police, ni CDN, ni image.
-
----
-
-## 10. Documents publics
-
-Cinq textes, versionnés dans le dépôt et servis par le Worker. Les trois premiers sont
-rédigés par vous ; les deux derniers **dérivent du code**.
-
-| Document | Route | Auteur |
-|---|---|---|
-| Conditions d'utilisation | `/cgu` | vous — exclusion de garantie, absence d'engagement de disponibilité, préavis de fermeture, identité de l'exploitant et fait qu'il plaide, voie de rétablissement |
-| Politique de confidentialité | `/confidentialite` | vous — responsable de la protection des RP, finalités, sous-traitants, conservation, droits |
-| Attestation | `/attestation` | vous — texte que le demandeur atteste, versionné |
-| Fiche de conformité | `/conformite` | **dérivée** : sous-traitants, localisation, tables et rétentions, chiffrement, ce que l'exploitant peut lire |
-| Registre de gouverne | `/gouverne` | **dérivée** : quotas (valeurs exactes), liste des signaux mesurés, états, procédure — et **jamais** les valeurs de franchissement, avec mention écrite de cette réserve (§6.3) |
-
-La fiche de conformité est le document dont un confrère prudent a besoin pour satisfaire à ses
-propres obligations déontologiques. Qu'elle soit engendrée depuis le code est ce qui garantit
-qu'elle ne mentira pas : une table ajoutée sans rétention déclarée doit **faire échouer la
-compilation**.
-
----
-
-## 11. Ordre de migration
-
-Cette section est la plus dangereuse du document. **Deux incidents ont cassé le connecteur de
-`legislation`** — le 2026-07-23 (le `404` du slash final) et le 2026-07-25 (une fenêtre de `404`
-pendant une bascule faite dans le mauvais ordre), le second irréversiblement : il n'a été
-débloqué que par `wrangler secret delete MCP_TOKEN`. Dans les deux cas, le mode de panne n'était
-pas lisible — un `404` a poussé le client dans une découverte OAuth où il s'est coincé. Rien
-d'équivalent n'est consigné pour `jurisprudence`.
-
-**Règle générale : ajouter d'abord, servir les deux, retirer ensuite — jamais l'inverse.**
-
-1. **Socle extrait, aucun comportement modifié.** Déplacer `rpc.ts` et `validate.ts` de
-   `jurisprudence` vers le socle, sans changer une ligne de logique. De `registry.ts`, ne monter
-   que le **type** `ToolDescriptor` et la mécanique de listage et d'ordre : les treize
-   descripteurs, `INSTRUCTIONS`, `SERVER_INFO` et `callTool` **restent dans le dépôt** — c'est
-   de la connaissance du domaine, que la §2 interdit au socle. Même réserve du côté de
-   `legislation`, dont les descripteurs vivent dans `src/tools.ts` et `catalogue.json`, source
-   unique des titres dont la parité est déjà épinglée par `tests/catalogue.test.mjs`. Suite
-   verte, `tools/list` identique octet pour octet.
-2. **`legislation` réécrit sur le socle, à comportement constant.** L'ancien `McpAgent` et le
-   nouveau chemin coexistent derrière un drapeau (`SOCLE = "true"`). Basculer, observer une
-   semaine, retirer le `McpAgent`.
-3. **`2026-07-28` et `2025-11-25` ajoutés, `2025-06-18` conservé — les trois de S3.** Le pont
-   de la §3.3 en premier. Ne retirer `2025-03-26` qu'après avoir constaté qu'aucun client ne
-   l'annonce (le `clientInfo` du plan technique le dira).
-4. ~~**Sortie double, sans retirer la prose.**~~ **SANS OBJET** — S5 abandonnée le
-   2026-09-17. La marche a été exécutée en entier sur `legislation`, servie une journée en
-   production, mesurée, puis retirée : ~7 700 jetons par session pour publier un contrat
-   qu'aucun lecteur ne lisait. Ne pas la refaire sans qu'un consommateur nommé le demande.
-5. **Identité, en parallèle du secret partagé.** Les jetons par titulaire sont acceptés **en
-   plus** de `MCP_TOKEN` et `MCP_SHARED_SECRET`. Poser un jeton de titulaire pour votre propre
-   usage, puis vérifier.
-
-   ⛔ **LE DANGER DÉCRIT ICI S'EST INVERSÉ LE 2026-08-27, et ce paragraphe a menti trois
-   semaines.** Il avertissait que retirer `MCP_TOKEN` **ouvrirait** `/mcp`. C'est le
-   contraire : depuis le défaut fermé, une liste de secrets vide ne donne AUCUNE comparaison
-   à faire, donc tout répond 404. Retirer les secrets partagés **ferme** le connecteur, et
-   la soupape R8 n'existe plus.
-
-   L'ordre reste néanmoins le même, pour une raison qui a simplement changé de signe : ne
-   retirer les secrets partagés qu'**après** avoir vérifié qu'un jeton de titulaire ouvre
-   réellement — sans quoi on se retrouve dehors, sans porte de rechange, avec pour seul
-   recours `wrangler rollback` (dont la péremption tient à toute migration de classe
-   Durable Object survenue entre-temps).
-
-   Pallas Athéna ne figure plus dans cette marche : son clavardage a été supprimé le
-   2026-09-02 et `MCP_SHARED_SECRET_ATHENA` retiré le 2026-09-17.
-6. **Coffre.** Votre clef y entre en premier. Vérifier qu'un titulaire d'essai sans clef reçoit
-   bien `CLEF_ABSENTE` **avec** `CANLII_API_KEY` encore posée (S12). Ne retirer
-   `CANLII_API_KEY` qu'ensuite.
-7. **Gouverne, en observation d'abord.** Les seuils calculent et écrivent au registre sans
-   appliquer, pendant deux semaines, sur votre seul trafic. Calibrer, puis armer.
-8. **Journal en deux plans.** Nouvelles tables, écriture double, arrêt de la `search_log`
-   multilocataire, renommage, décision sur la purge.
-9. **Identifiants et `/id/`.** Additif, sans risque pour le bloc `/mcp`.
-10. **Ouverture.** Cinq confrères, trente jours d'observation, puis la file d'admission.
-
-**Pour chaque étape :** poser l'URL du connecteur **avant** d'armer le secret correspondant.
-Cette forme d'URL doit répondre `200` avec **et** sans le nouveau contrôle, faute de quoi le
-connecteur voit un `404` pendant la fenêtre de bascule.
-
----
-
-## 12. Plan de test et portes de validation
-
-La suite doit rester **entièrement hors ligne** : ni réseau, ni clef, ni quota. C'est déjà la
-règle des deux dépôts et l'ouverture la rend plus impérative, pas moins.
+## 12. Portes de validation automatisées (hors ligne, sous `workerd`)
 
 | Porte | Contrôle | Phase |
 |---|---|---|
-| G1 | `npx wrangler types && npx tsc --noEmit && npx biome check . && npx vitest run` vert dans les trois dépôts | toutes |
-| G2 | Registre confronté au README, et à la page publique — l'écart est une dérive même si tout est vert | toutes |
-| G3 | Une même session d'évaluation passe en `2026-07-28`, `2025-11-25` et `2025-06-18` | 1 |
-| G4 | `tools/list` rend le même ensemble, dans le même ordre, sous les trois versions | 1 |
-| ~~G5~~ | ~~Tout `structuredContent` valide contre son `outputSchema` publié~~ — **RETIRÉE le 2026-09-17** avec S5. Aucun `outputSchema` n'est publié ; la charge plate de `legislation` ne porte aucun contrat, délibérément | — |
-| G6 | Le pré-vol CORS n'est jamais limité en débit ; une origine inconnue est refusée avant l'authentification | 1 |
-| G7 | Jeton inconnu, expiré, révoqué, et titulaire suspendu : **même** réponse, **même** code, **même** délai | 2 |
-| G8 | Un titulaire sans clef reçoit `CLEF_ABSENTE` alors que `CANLII_API_KEY` est posée | 2 |
-| G9 | Aucune sortie journalisable ne contient la clef CanLII, le jeton, ni `request.url` — étendu au coffre et à `X-Clef-CanLII` | 2 |
-| G10 | Aucune signature exportée ne rend une clef en clair ; le module de chiffrement du coffre n'est importé que par son module d'accès | 2 |
-| G11 | Un titulaire d'essai est limité par l'automate, puis rétabli, et les deux transitions figurent au registre | 3 |
-| G12 | Aucun `UPDATE` ni `DELETE` sur `registre_gouverne` dans le dépôt | 3 |
-| G13 | Test de garde de schéma : aucune table ne porte à la fois un titulaire et un texte libre | 4 |
-| G14 | `expurgerForme()` ne laisse passer aucun nom sur un corpus de 200 citations éprouvantes ; l'échec de reconnaissance abandonne l'entrée | 4 |
-| G15 | Tout appel à `console.*` a pour argument une chaîne littérale ou un type sûr énuméré | 4 |
-| G16 | La purge à 90 jours vide effectivement `evenement_technique` (test sur horloge injectée) | 4 |
-| G17 | Tout `@id` émis se résout en HTML, en JSON-LD et — pour la législation — en Akoma Ntoso | 5 |
-| G18 | La fiche de conformité déclare **toutes** les tables du schéma ; une table sans rétention déclarée fait échouer la compilation | 5 |
-| G19 | Aucune occurrence de `x-mcp-header` dans les deux registres | 1 |
-| G20 | Le rejeu des fixtures publiques contre le serveur déployé est identique à la référence | 5 |
-| G21 | **Aucun secret configuré ⇒ tout est refusé.** Table `jeton` vide, `MCP_TOKEN` absent, `MCP_SHARED_SECRET` absent, erreur de lecture D1 : quatre cas, quatre `404` | 2 |
-| G22 | `MCP_ENABLED` absent, vide, `"FALSE"`, `"0"` ⇒ `404` sur `/mcp` ; et `/`, `/cgu`, `/conformite`, `/moi` répondent **quand même** `200` | 1 |
-| G23 | Un `GET /mcp` sans porteur rend `404`, jamais `405` — l'oracle de la §4.3 marche 6 | 1 |
-| G24 | Une requête sans `MCP-Protocol-Version` rend `400` + `-32020`, jamais un service silencieux | 1 |
-| G25 | Toute table de contenu est horodatée **au jour** ; aucune ne descend à la seconde | 4 |
-| G32 | **Le limiteur anonyme limite vraiment** : mille jetons DISTINCTS et invalides, présentés depuis une même adresse, sont refusés avant d'atteindre D1 — la clé ne varie pas avec le jeton (A1) | 3 |
-| G33 | `frapperJeton()` rend 43 caractères `base64url`, tirés de `crypto.getRandomValues` ; aucune autre fonction du socle ne fabrique de jeton, et aucune n'emploie `Math.random` (A2) | 2 |
-| G34 | Les quatre espaces de limitation portent quatre `namespace_id` distincts, et aucun n'est partagé entre les deux dépôts | 3 |
-| G26 | Aucun littéral numérique de seuil dans `gouverne/score.ts` ni dans `wrangler.jsonc` ; `SEUILS_GOUVERNE` absent ou invalide ⇒ observation seule, aucun changement d'état, avertissement émis | 3 |
+| G1 | `tsc --noEmit`, `biome check .`, `vitest run` (`workerd`) et `npm run audit` (`0` vulnérabilité d'exécution + parité stricte `osv-scanner.toml`) verts | 1–4 |
+| G2 | Parité `CLAUDE.md === GEMINI.md` (< 24 Kio), `README.md`, `/mcp/server-card` et pages publiques | 1–4 |
+| G3–G4 | Session complète et ordre déterministe de `tools/list` sous `2026-07-28`, `2025-11-25`, `2025-06-18` | 1 (livré) |
+| G6 | Pré-vol CORS jamais limité en débit ; origine navigateur inconnue rejetée en `403` sans CORS avant auth | 1 (livré) |
+| G7 | Jeton inconnu, expiré, révoqué, hors portée, ou titulaire `en_attente`/`suspendu`/`revoque`/`refuse` : **même** réponse (`404` vide sur `/mcp`, `401` sur `/mcp/oauth`), sans requête D1 secondaire | 1 (livré) |
+| G8 | Sans clé dans `coffre_clef` (ou clé `refusee`) et sans en-tête `X-Clef-CanLII`, `ouvrirCoffre` rend `ABSENTE` / `REFUSEE` sans aucune retombée, bloquant aussi le cache D1 | 1 & 3 |
+| G9 | `expurger()` purge `?key=`, `api_key=`, `Bearer`, `/mcp/<jeton>` et les secrets connus ; aucun `request.url` dans `console.*` | 1 & 3 |
+| G10 | Aucune fonction exportée dont le nom évoque une clé/secret ne retourne `string` / `Promise<string>` ; `ouvrirCoffre` garde le clair en fermeture et efface son tampon mémoire | 1 (livré) |
+| G12 | Aucun `UPDATE` ni `DELETE` sur `registre_gouverne` | 2 & 3 |
+| G13 | `verifierSchemaSansContenuIdentifiant` échoue si `search_log` ou `forme_requete` existe ou si une table opérationnelle joint identité et colonne `TEXT` non contrainte par `CHECK IN` | 1 (livré) |
+| G16 | `purgerRetentionsD1` (`purgerEvenementsTechniquesD1`, `purgerCompteursJourD1`, `purgerDemandesAccesD1`, `purgerInvitationsAccesD1`, `purgerSessionsPortailD1`, `purgerCodesOAuthD1`) purge exactement les entrées échues en utilisant ses index D1 (`EXPLAIN QUERY PLAN` sans `SCAN`) | 1 (livré) |
+| G18 | `verifierCouvertureRetentionSchema` garantit que `POLITIQUES_RETENTION_IDENTITE` couvre toutes les tables de `DB_IDENTITE` sans table oubliée ni entrée orpheline | 1 & 2 |
+| G19 | Aucune occurrence de `x-mcp-header` dans les registres d'outils | 1 & 3 |
+| G21 | Fermé par défaut : secrets absents, table `jeton` vide, dépôt absent ou erreur D1 -> refus systématique | 1 (livré) |
+| G22–G24 | `MCP_ENABLED` fermé par défaut sur `/mcp*` mais pages publiques `200` ; `GET /mcp` anonyme -> `404` ; absence de `MCP-Protocol-Version` gérée selon `SERT_AVANT_2025_06_18` | 1 & 3 |
+| G25 | `verifierSchemaSansContenuIdentifiant` échoue si une table portant du texte libre déclare un horodatage plus fin que le jour | 1 (livré) |
+| G32 | Mille jetons distincts invalides depuis une même IP sont bloqués avant D1, **tandis que** des rafales authentifiées Deep Research sur une IP infonuagique partagée ne déclenchent jamais la quarantaine d'échecs IP | 1 (livré) |
+| G33 | `frapperJeton()` rend 43 caractères `base64url` via `crypto.getRandomValues` ; aucun `Math.random` dans `src/` ; seuls `porteur.ts` et `coffre.ts` appellent `getRandomValues` | 1 (livré) |
+| G34 | Tous les `namespace_id` de `ratelimits` sont distincts intra-Worker et inter-Workers (`1011..1032`) | 2 & 3 |
+| G35 | OAuth 2.1 : `verifierDefiPkceS256` rejette `plain` et tout `code_verifier` hors `43..128` car. RFC 7636 | 1 (livré) |
+| G36 | OAuth 2.1 : `estUriRedirectionAutorisee` et `estClientIdMetadonneesValide` rejettent HTTP hors boucle locale, fragments `#`, traversées `..` et tout littéral IPv4/IPv6 ou hôte local (anti-SSRF) | 1 (livré) |
+| G37 | `observability.enabled === false` et `invocation_logs === false` épinglés par test sur `wrangler.jsonc` de `MCP-Legislation` et `MCP-Jurisprudence` | 3 |
+| G38 | Aucun horodatage exact `fetched_at` n'apparaît dans la prose rendue par `MCP-Jurisprudence` | 3 |
 
 ---
 
-## 13. Phasage, effort, et ce qui n'est pas délégable
+## 13. Plan de livraison multi-dépôts (Phases 1 à 4)
 
-| Phase | Contenu | Effort Claude Code | Ce qui exige l'avocat |
-|---|---|---|---|
-| 0 | Déterminations préalables | — | **tout** : CanLII par écrit, EFVP, véhicule, assurance, textes |
-| 1 | Socle, protocole `2026-07-28`, `legislation` hors `McpAgent`, sortie double | 3 à 5 séances | arbitrer S8 (404 contre 401) |
-| 2 | Identité, jetons, coffre, consoles | 3 à 4 séances | les cinq textes de la §10, le processus d'admission |
-| 3 | Gouverne : débit, quotas, score, états | 2 à 3 séances | arrêter les seuils et la voie de rétablissement |
-| 4 | Journal en deux plans, purges, gardes | 1 à 2 séances | décider du sort de la `search_log` |
-| 5 | Données structurées, identifiants, `/id/`, ressources | 3 à 4 séances | valider les identifiants FRBR et la citation normalisée |
-| 6 | Ouverture graduée | — | choisir les cinq premiers, traiter la file |
-
-Les phases 1, 4 et 5 sont livrables sans les déterminations de la phase 0 : elles n'exposent
-rien de nouveau et améliorent les connecteurs pour votre propre usage. Les phases 2, 3 et 6 en
-dépendent.
-
-**Ce que ce document ne fait pas.** Il ne conçoit ni serveur d'autorisation OAuth (S9), ni
-facturation, ni vérification automatique du Tableau de l'Ordre — laquelle n'existe pas. Il ne
-touche ni à l'analyseur de citations, ni aux tables du Québec, ni au pipeline EPUB, ni au
-moissonnage planifié du §11 de `SPEC_CANLII_MCP.md` — lequel n'est pas en attente d'une
-détermination : il a été **tranché par la négative le 2026-07-23**, l'invariant 15 du dépôt
-interdit de basculer le drapeau « même pour essayer », et rien ici ne rouvre cette décision.
+| Phase | Dépôt(s) | Contenu livrable |
+|---|---|---|
+| **Phase 1** *(livrée)* | `MCP-Socle` (`v0.8.0`) | Mise à jour de `SPEC-SOCLE-COMMUN.md`, `titulaire.ts`, `coffre.ts` (`empreinteCoffre` & `repereCoffre` HMAC), `oauth.ts` (`porteesCanoniques`), `gouverne.ts` (sas `demande_acces`, `invitation_acces`, purges indexées Loi 25, `POLITIQUES_RETENTION_IDENTITE`), extensions `porteur.ts` / `refus.ts` / `http.ts`, migration `@cloudflare/vitest-plugin`, autorisation de pratique professionnelle dans `LICENSE`, parité `CLAUDE.md` = `GEMINI.md`, tests de garde `workerd` (`G7`–`G10`, `G13`, `G16`, `G18`, `G21`, `G25`, `G32`, `G33`, `G35`, `G36`) |
+| **Phase 2** | `MCP-Acces` *(nouveau)* + D1 `mcp-identite` | Worker `acces.poirierlavoie.ca`, migrations D1 `mcp-identite`, Cloudflare Email Sending (`noreply@acces.poirierlavoie.ca`), `/demande` (vérification courriel + épreuve CanLII en direct + scellement coffre), `/moi`, `/exploitant`, serveur OAuth 2.1 (`/oauth/*`, RFC 8414, CIMD) et les 5 documents publics (`/cgu`, `/confidentialite`, `/attestation`, `/conformite`, `/gouverne`) |
+| **Phase 3** | `MCP-Legislation` & `MCP-Jurisprudence` | Passage à `@poirierlavoie/mcp-socle#v0.8.0`, liaison `DB_IDENTITE`, double monture `/mcp` (`404` uniforme) + `/mcp/oauth` (`401` RFC 9728), BYOK CanLII strict + cache partagé sans `fetched_at` (`G38`), bascule `hybride_permis`, retrait/archivage de `search_log`, désactivation d'`observability` (`G37`), limiteurs Deep Research (`1011..1025`, `G34`), `openWorldHint: false` sur outils hors ligne, mise à jour de `GET /`, `/mcp/server-card`, `README.md`, `SECURITY.md` et `LICENSE` |
+| **Phase 4** | `droit-civil-quebecois` & `MCP-Outils` | Mise à jour de `README.md`, `SECURITY.md`, `LICENSE` (autorisation de pratique professionnelle), `CLAUDE.md` / `GEMINI.md`, instructions de connexion multi-plateformes et Deep Research (préambule `SAFETY-KERNEL`), `verifier.py`, `verifier_tout.py --mode live` et ouverture graduée |
