@@ -1115,7 +1115,7 @@ export function verifierCouvertureRetentionSchema(
   politiques: readonly PolitiqueRetentionTable[] = POLITIQUES_RETENTION_IDENTITE,
 ): string[] {
   const anomalies: string[] = [];
-  const sansCommentaires = sql.replace(/--.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
+  const sansCommentaires = retirerCommentairesSql(sql);
   const tablesSql = new Set(extraireTablesSql(sansCommentaires).map((t) => t.nomTable));
   const tablesDeclarees = new Set<string>();
 
@@ -1244,7 +1244,7 @@ interface ColonneSqlExtraite {
  */
 export function verifierSchemaSansContenuIdentifiant(sql: string): string[] {
   const violations: string[] = [];
-  const sansCommentaires = sql.replace(/--.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
+  const sansCommentaires = retirerCommentairesSql(sql);
 
   for (const { nomTable, blocColonnes } of extraireTablesSql(sansCommentaires)) {
     if (TABLES_CONTENU_INTERDITES.has(nomTable)) {
@@ -1289,6 +1289,34 @@ export function verifierSchemaSansContenuIdentifiant(sql: string): string[] {
   }
 
   return violations;
+}
+
+function retirerCommentairesSql(sql: string): string {
+  let out = "";
+  let i = 0;
+  while (i < sql.length) {
+    const ch = sql[i]!;
+    if (ch === "'" || ch === '"' || ch === "`" || ch === "[") {
+      const fin = avancerHorsLitteralSql(sql, i);
+      out += sql.slice(i, fin);
+      i = fin;
+      continue;
+    }
+    if (ch === "-" && sql[i + 1] === "-") {
+      const finLigne = sql.indexOf("\n", i + 2);
+      i = finLigne >= 0 ? finLigne : sql.length;
+      continue;
+    }
+    if (ch === "/" && sql[i + 1] === "*") {
+      const finBloc = sql.indexOf("*/", i + 2);
+      i = finBloc >= 0 ? finBloc + 2 : sql.length;
+      out += " ";
+      continue;
+    }
+    out += ch;
+    i++;
+  }
+  return out;
 }
 
 function avancerHorsLitteralSql(sql: string, indexOuverture: number): number {
