@@ -108,6 +108,7 @@ Toute modification d'interfaces, de transport, d'authentification ou de version 
    - Proscription absolue de toute référence aux anciens identifiants de dépôts retirés.
 8. **Zéro journalisation de contenu** : Ni le socle ni les Workers consommateurs n'enregistrent le texte des requêtes (`search_log` et `forme_requete` interdites par `verifierSchemaSansContenuIdentifiant`).
 9. **Secrets locaux** : Ne jamais lire, consigner, journaliser ni committer de secrets (`cf.token`, `*.token`, `.dev.vars`, `mcp.url`, `.env*`).
+10. **Gouvernance Git (`main-pr-and-ci`)** : Le contournement administrateur du ruleset `main-pr-and-ci` est restreint à `pull_request` — **ne jamais pousser directement sur `main`** ; travailler sur une branche dédiée, ouvrir une Pull Request, attendre le passage des contrôles requis (`CI`, `CodeQL`, `OSV-Scanner`, `Trivy`), puis fusionner par *squash* (`gh pr merge --squash --delete-branch`).
 
 ---
 
