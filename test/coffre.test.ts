@@ -220,18 +220,60 @@ describe("scellerCoffre et ouvrirCoffre — chiffrement par enveloppe dans worke
       client: { estSurcharge: true },
     });
 
-    // Une surcharge d'en-tête dépassant MAX_LONGUEUR_PORTEUR échoue fermé ("INVALIDE") sans retomber sur le coffre :
-    const surchargeTropLongue = await ouvrirCoffre(
+    // Une surcharge d'en-tête dépassant MAX_LONGUEUR_PORTEUR, vide/blanche ou { etat: "invalide" }
+    // échoue fermé ("INVALIDE") sans jamais retomber sur le coffre :
+    for (const mauvaiseSurcharge of ["x".repeat(600), "", "   ", { etat: "invalide" } as const]) {
+      let appelee = false;
+      const surchargeInvalide = await ouvrirCoffre(
+        {
+          titulaireId: "tit_rev",
+          usage: "fournisseur_a",
+          entree: { ...scelle, etat: "valide" },
+          maitres: { 1: MAITRE_V1 },
+          surchargeEntete: mauvaiseSurcharge,
+        },
+        () => {
+          appelee = true;
+          return "interdit";
+        },
+      );
+      expect(surchargeInvalide).toEqual({ ok: false, motif: "INVALIDE" });
+      expect(appelee).toBe(false);
+    }
+
+    // Une surcharge { etat: "absent" } retombe normalement sur le coffre valide :
+    const surchargeAbsente = await ouvrirCoffre(
       {
         titulaireId: "tit_rev",
         usage: "fournisseur_a",
         entree: { ...scelle, etat: "valide" },
         maitres: { 1: MAITRE_V1 },
-        surchargeEntete: "x".repeat(600),
+        surchargeEntete: { etat: "absent" },
       },
-      () => "interdit",
+      (clair) => ({ clair }),
     );
-    expect(surchargeTropLongue).toEqual({ ok: false, motif: "INVALIDE" });
+    expect(surchargeAbsente).toEqual({
+      ok: true,
+      provenance: "coffre",
+      client: { clair: "secret-revoque-1234567890" },
+    });
+
+    // Une surcharge { etat: "valide" } prime sans déchiffrer le coffre :
+    const surchargeObjetValide = await ouvrirCoffre(
+      {
+        titulaireId: "tit_rev",
+        usage: "fournisseur_a",
+        entree: { ...scelle, etat: "refusee" },
+        maitres: { 1: MAITRE_V1 },
+        surchargeEntete: { etat: "valide", valeur: "clef-via-resultat-porteur" },
+      },
+      (clair) => ({ clair }),
+    );
+    expect(surchargeObjetValide).toEqual({
+      ok: true,
+      provenance: "entete",
+      client: { clair: "clef-via-resultat-porteur" },
+    });
 
     // Une exception levée par `fabrique` se propage à l'identique sur `coffre` et `entete`
     // (ne doit jamais être travestie en échec de déchiffrement "INVALIDE") :
@@ -373,5 +415,20 @@ describe("empreinteCoffre, repereCoffre à clé maître et expurger (G9)", () =>
     // Corps x-www-form-urlencoded débutant directement par un paramètre sensible (sans ? ni &) :
     const formulaireOAuth = expurger("code=CODE_INITIAL_SECRET&code_verifier=PKCE_SECRET_43");
     expect(formulaireOAuth).toBe("code=[EXPURGE]&code_verifier=[EXPURGE]");
+
+    // Paramètres sensibles dont le nom est partiellement ou totalement encodé en pourcentage :
+    const encodes = expurger(
+      "GET https://exemple.test/mcp?%6bey=SECRET_ENC&foo=bar&%63ode=OAUTH_ENC&a%70i%5Fkey=API_ENC&%4BEY=SECRET_MAJ&%ZZ=invalide",
+    );
+    expect(encodes).not.toContain("SECRET_ENC");
+    expect(encodes).not.toContain("OAUTH_ENC");
+    expect(encodes).not.toContain("API_ENC");
+    expect(encodes).not.toContain("SECRET_MAJ");
+    expect(encodes).toContain("?%6bey=[EXPURGE]");
+    expect(encodes).toContain("&foo=bar");
+    expect(encodes).toContain("&%63ode=[EXPURGE]");
+    expect(encodes).toContain("&a%70i%5Fkey=[EXPURGE]");
+    expect(encodes).toContain("&%4BEY=[EXPURGE]");
+    expect(encodes).toContain("&%ZZ=invalide");
   });
 });

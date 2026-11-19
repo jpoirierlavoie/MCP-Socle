@@ -111,16 +111,36 @@ export function bearerOf(request: Request): string | null {
   return jeton && jeton.length <= MAX_LONGUEUR_PORTEUR ? jeton : null;
 }
 
+/** Résultat structuré de lecture d'un en-tête porteur explicite (`G8`, `S11`). */
+export type ResultatPorteurEntete =
+  | { readonly etat: "absent" }
+  | { readonly etat: "valide"; readonly valeur: string }
+  | { readonly etat: "invalide" };
+
+/**
+ * Lit un porteur fourni dans un en-tête HTTP explicite en distinguant son absence d'une
+ * présence vide ou hors gabarit (`> MAX_LONGUEUR_PORTEUR`), afin qu'un appelant puisse
+ * échouer fermé sans jamais retomber silencieusement sur un secret persisté (`G8`, `S11`).
+ */
+export function lirePorteurEntete(request: Request, nomEntete: string): ResultatPorteurEntete {
+  if (!nomEntete || nomEntete.trim().length === 0) return { etat: "absent" };
+  const raw = request.headers.get(nomEntete);
+  if (raw === null) return { etat: "absent" };
+  if (raw.length > MAX_LONGUEUR_PORTEUR * 2) return { etat: "invalide" };
+  const valeur = raw.trim();
+  if (valeur.length === 0 || valeur.length > MAX_LONGUEUR_PORTEUR) {
+    return { etat: "invalide" };
+  }
+  return { etat: "valide", valeur };
+}
+
 /**
  * Lit un porteur fourni dans un en-tête HTTP explicite (par exemple variante zéro-connaissance
  * côté client maîtrisé, S11), borné à `MAX_LONGUEUR_PORTEUR`.
  */
 export function porteurEntete(request: Request, nomEntete: string): string | null {
-  if (!nomEntete || nomEntete.trim().length === 0) return null;
-  const raw = request.headers.get(nomEntete);
-  if (!raw || raw.length > MAX_LONGUEUR_PORTEUR * 2) return null;
-  const valeur = raw.trim();
-  return valeur.length > 0 && valeur.length <= MAX_LONGUEUR_PORTEUR ? valeur : null;
+  const resultat = lirePorteurEntete(request, nomEntete);
+  return resultat.etat === "valide" ? resultat.valeur : null;
 }
 
 /**
