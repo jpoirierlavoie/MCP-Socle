@@ -143,17 +143,19 @@ describe("debitAcceptable", () => {
 });
 
 describe("refus", () => {
-  it("404 : corps VIDE, et aucun en-tête annonçant un point d'entrée MCP", async () => {
+  it("404 : corps VIDE, Cache-Control no-store et aucun en-tête annonçant un point d'entrée MCP", async () => {
     const r = refuser("404");
     expect(r.status).toBe(404);
     expect(await r.text()).toBe("");
     expect(r.headers.get("WWW-Authenticate")).toBeNull();
+    expect(r.headers.get("Cache-Control")).toBe("no-store");
   });
 
-  it("401 : porte WWW-Authenticate — la bascule derrière drapeau", () => {
+  it("401 : porte WWW-Authenticate et Cache-Control no-store — la bascule derrière drapeau", () => {
     const r = refuser("401");
     expect(r.status).toBe(401);
     expect(r.headers.get("WWW-Authenticate")).toBe("Bearer");
+    expect(r.headers.get("Cache-Control")).toBe("no-store");
   });
 
   it("les deux formes portent les en-têtes CORS, pour que le navigateur les LISE", () => {
@@ -164,25 +166,31 @@ describe("refus", () => {
     }
   });
 
-  it("origine interdite : 403 SANS en-tête CORS — sinon le refus est un oracle", () => {
+  it("origine interdite : 403 SANS en-tête CORS et avec Cache-Control no-store — sinon le refus est un oracle", () => {
     const r = origineInterdite();
     expect(r.status).toBe(403);
     expect(r.headers.get("Access-Control-Allow-Origin")).toBeNull();
+    expect(r.headers.get("Cache-Control")).toBe("no-store");
   });
 
-  it("429 porte Retry-After en secondes", () => {
-    expect(tropDeRequetes(300).headers.get("Retry-After")).toBe("300");
+  it("429 porte Retry-After en secondes et Cache-Control no-store", () => {
+    const r = tropDeRequetes(300);
+    expect(r.headers.get("Retry-After")).toBe("300");
+    expect(r.headers.get("Cache-Control")).toBe("no-store");
   });
 
-  it("405 annonce Allow, et ne se sert qu'APRÈS l'identité", () => {
-    expect(methodeNonPermise().headers.get("Allow")).toBe("POST, OPTIONS");
+  it("405 annonce Allow et Cache-Control no-store, et ne se sert qu'APRÈS l'identité", () => {
+    const r = methodeNonPermise();
+    expect(r.headers.get("Allow")).toBe("POST, OPTIONS");
+    expect(r.headers.get("Cache-Control")).toBe("no-store");
   });
 });
 
 describe("jsonResponse", () => {
-  it("sérialise, pose le type et la charge", async () => {
+  it("sérialise, pose le type, Cache-Control no-store et la charge", async () => {
     const r = jsonResponse({ a: 1 }, 200);
     expect(r.headers.get("Content-Type")).toContain("application/json");
+    expect(r.headers.get("Cache-Control")).toBe("no-store");
     expect(await r.json()).toEqual({ a: 1 });
   });
 });
@@ -200,16 +208,19 @@ describe("drapeau et reponseSante", () => {
     expect(drapeau("quelconque", false)).toBe(false);
   });
 
-  it("reponseSante renvoie 200 JSON si actif et 404 sinon", async () => {
+  it("reponseSante renvoie 200 JSON si actif et 404 sinon, toujours avec Cache-Control no-store", async () => {
     const ok = reponseSante({ actif: true, commit: "abc1234" });
     expect(ok.status).toBe(200);
+    expect(ok.headers.get("Cache-Control")).toBe("no-store");
     expect(await ok.json()).toEqual({ status: "ok", commit: "abc1234" });
 
     const defaut = reponseSante();
+    expect(defaut.headers.get("Cache-Control")).toBe("no-store");
     expect(await defaut.json()).toEqual({ status: "ok", commit: "inconnu" });
 
     const coupe = reponseSante({ actif: false, commit: "abc1234" });
     expect(coupe.status).toBe(404);
+    expect(coupe.headers.get("Cache-Control")).toBe("no-store");
     expect(await coupe.text()).toBe("Not found");
   });
 });
