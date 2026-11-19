@@ -10,6 +10,3 @@
 #      bloquant appartient à l'étape « Verdict » de `.github/workflows/osv-scanner.yml` (qui
 #      inspecte le rapport SARIF filtré) ainsi qu'à `scripts/verifier-audit.mjs` (`npm run audit`).
 
-[[IgnoredVulns]]
-id = "GHSA-fc5q-39xc-vjpf"
-reason = "2026-11-18 : ReDoS sur extglobs répétés dans picomatch <= 4.0.7 (aucun correctif publié sur npm à ce jour, PR amont micromatch/picomatch#194 en attente) ; dépendance exclusivement de développement (vitest/vite/tinyglobby), absente de src/ et du bundle déployé (dependencies vide), motifs glob statiques maîtrisés. À retirer dès publication de picomatch > 4.0.7."

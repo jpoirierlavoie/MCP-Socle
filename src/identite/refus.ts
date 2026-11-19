@@ -17,6 +17,7 @@
 import { corsHeaders } from "../protocole/http";
 
 const JSON_HEADERS = { "Content-Type": "application/json; charset=utf-8" };
+const NO_STORE_HEADERS = { "Cache-Control": "no-store" };
 
 export type FormeRefus = "404" | "401";
 
@@ -133,13 +134,18 @@ export function refuser(
       status: 401,
       headers: {
         ...JSON_HEADERS,
+        ...NO_STORE_HEADERS,
         "WWW-Authenticate": construireEnteteBearer(options401),
         ...corsHeaders(origin),
       },
     });
   }
-  // Corps VIDE, et aucun en-tête qui annonce un point d'entrée MCP.
-  return new Response(null, { status: 404, headers: corsHeaders(origin) });
+  // Corps VIDE et aucun en-tête annonçant un point d'entrée MCP ; `no-store` empêche la mise
+  // en cache négative de `404` par le CDN d'arête (Cloudflare) sans constituer un oracle.
+  return new Response(null, {
+    status: 404,
+    headers: { ...NO_STORE_HEADERS, ...corsHeaders(origin) },
+  });
 }
 
 /**
@@ -151,7 +157,7 @@ export function refuser(
 export function origineInterdite(): Response {
   return new Response(JSON.stringify({ error: "forbidden_origin" }), {
     status: 403,
-    headers: JSON_HEADERS,
+    headers: { ...JSON_HEADERS, ...NO_STORE_HEADERS },
   });
 }
 
@@ -161,6 +167,7 @@ export function tropDeRequetes(retryAfter: number, origin: string | null = null)
     status: 429,
     headers: {
       ...JSON_HEADERS,
+      ...NO_STORE_HEADERS,
       "Retry-After": String(retryAfter),
       ...corsHeaders(origin),
     },
@@ -179,6 +186,6 @@ export function tropDeRequetes(retryAfter: number, origin: string | null = null)
 export function methodeNonPermise(origin: string | null = null): Response {
   return new Response(null, {
     status: 405,
-    headers: { Allow: "POST, OPTIONS", ...corsHeaders(origin) },
+    headers: { Allow: "POST, OPTIONS", ...NO_STORE_HEADERS, ...corsHeaders(origin) },
   });
 }

@@ -7,6 +7,7 @@
 import { sansBarresFinales } from "../identite/porteur";
 
 const JSON_HEADERS = { "Content-Type": "application/json; charset=utf-8" };
+const NO_STORE_HEADERS = { "Cache-Control": "no-store" };
 
 /**
  * Origines de navigateur admises par défaut.
@@ -69,7 +70,7 @@ export function corsHeaders(origin: string | null): Record<string, string> {
 export function jsonResponse(body: unknown, status = 200, origin: string | null = null): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...JSON_HEADERS, ...corsHeaders(origin) },
+    headers: { ...JSON_HEADERS, ...NO_STORE_HEADERS, ...corsHeaders(origin) },
   });
 }
 
@@ -171,7 +172,7 @@ export interface OptionsSante {
 /** Réponse HTTP du point de santé `/health`. */
 export function reponseSante(options: OptionsSante = {}): Response {
   if (options.actif === false) {
-    return new Response("Not found", { status: 404 });
+    return new Response("Not found", { status: 404, headers: NO_STORE_HEADERS });
   }
   const commit =
     typeof options.commit === "string" && options.commit.length > 0 ? options.commit : "inconnu";
