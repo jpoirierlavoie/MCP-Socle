@@ -14,7 +14,7 @@ En **dépendance de développement**, par étiquette git immuable, et empaqueté
 
 ```jsonc
 "devDependencies": {
-  "@poirierlavoie/mcp-socle": "github:jpoirierlavoie/MCP-Socle#v0.8.1"
+  "@poirierlavoie/mcp-socle": "github:jpoirierlavoie/MCP-Socle#v0.8.2"
 }
 ```
 
@@ -45,11 +45,11 @@ Les tests s'exécutent hors ligne dans `workerd` (`@cloudflare/vitest-plugin`) a
 | [`src/protocole/LISEZ-MOI.md`](src/protocole/LISEZ-MOI.md) | inventaire de `protocole/` (`rpc.ts`, `valide.ts`, `registre.ts`, `versions.ts`, `entetes.ts`, `meta.ts`, `decouverte.ts`, `http.ts`, `serveur.ts`) |
 | [`docs/archive/`](docs/archive/) | documents historiques d'ouverture et de planification (`NOTE-OUVERTURE-PUBLIQUE.md`, `FEUILLE-DE-ROUTE.md`, `PROCEDURES-MANUELLES.md`) |
 
-## État (`v0.8.1` — Phase 1 livrée + correctif `no-store`)
+## État (`v0.8.2` — Phase 1 livrée + durcissement `no-store`, `lirePorteurEntete`, `expurger` et `horodatageUtcMs`)
 
 - **Protocole (`src/protocole/`) :** enveloppe JSON-RPC 2.0, validateur JSON Schema **fermé par défaut** (`TypeConnu`, sûreté prototype), registre et exécuteur d'outils (`appelerOutil`), négociation de versions (`negocierInitialize`), validation UTF-8 fatale des en-têtes `2026-07-28`, fiche SEP-2127 (`construireCarteServeur`, `repondreCarteServeur`), origines CORS (`claude.ai`, `claude.com`, `gemini.google.com`, `aistudio.google.com`), `preflight` extensible, utilitaires (`drapeau`, `reponseSante` et `jsonResponse` avec `Cache-Control: no-store`), lecture bornée `64 Kio` et répartiteur HTTP sans état `servirRequeteMcp`.
 - **Identité, coffre, OAuth 2.1 et gouverne (`src/identite/`) :**
-  - Extraction et appariement constant-time des porteurs (`Bearer`, `?key=` optionnel, `/mcp/<jeton>`, `porteurEntete`, plafond `MAX_LONGUEUR_PORTEUR = 512`) et fabrique CSPRNG `frapperJeton` (`43` car. `base64url`, `queueJeton`).
+  - Extraction et appariement constant-time des porteurs (`Bearer`, `?key=` optionnel, `/mcp/<jeton>`, `lirePorteurEntete` distinguant `absent` d'`invalide`, `porteurEntete`, plafond `MAX_LONGUEUR_PORTEUR = 512`) et fabrique CSPRNG `frapperJeton` (`43` car. `base64url`, `queueJeton`).
   - Double posture de refus : `404` sans corps ni oracle pour la monture directe `/mcp`, et `401` + `WWW-Authenticate: Bearer resource_metadata="..."` (RFC 9728) pour la monture `/mcp/oauth`, tous émis avec `Cache-Control: no-store`.
   - Résolution multilocataire D1 (`resoudreJeton`, `ouvrirPrincipal`, `creerDepotJetonsD1`) avec portée unifiée par défaut (`les_deux`) ou par service et coexistence transitoire avec les secrets d'instance.
   - Coffre chiffré par enveloppe (`scellerCoffre`, `ouvrirCoffre` en fermeture stricte sans exposition du texte clair, `empreinteCoffre` et `repereCoffre` HMAC à clé maître, `expurger`).

@@ -14,7 +14,7 @@
  *   (ou `"REFUSEE"` si l'entrée a été invalidée).
  */
 
-import { MAX_LONGUEUR_PORTEUR } from "./porteur";
+import { MAX_LONGUEUR_PORTEUR, type ResultatPorteurEntete } from "./porteur";
 
 /** Taille standard du vecteur d'initialisation AES-GCM : 96 bits (12 octets). */
 export const LONGUEUR_IV_COFFRE = 12;
@@ -78,7 +78,7 @@ export interface SourceCoffre {
   readonly entree: LigneCoffre | null | undefined;
   readonly maitres: AnneauMaitresCoffre;
   /** Variante zéro-connaissance fournie par en-tête client maîtrisé (prime sur le coffre, S11). */
-  readonly surchargeEntete?: string | null;
+  readonly surchargeEntete?: string | ResultatPorteurEntete | null;
 }
 
 export type ResultatOuvertureCoffre<T> =
@@ -288,12 +288,23 @@ export async function ouvrirCoffre<T>(
   source: SourceCoffre,
   fabrique: (clair: string) => T | Promise<T>,
 ): Promise<ResultatOuvertureCoffre<T>> {
-  if (typeof source.surchargeEntete === "string") {
-    const surcharge = source.surchargeEntete.trim();
-    if (surcharge.length > MAX_LONGUEUR_PORTEUR) {
+  if (source.surchargeEntete !== null && source.surchargeEntete !== undefined) {
+    if (typeof source.surchargeEntete === "string") {
+      const surcharge = source.surchargeEntete.trim();
+      if (surcharge.length === 0 || surcharge.length > MAX_LONGUEUR_PORTEUR) {
+        return { ok: false, motif: "INVALIDE" };
+      }
+      const client = await fabrique(surcharge);
+      return { ok: true, client, provenance: "entete" };
+    }
+    if (source.surchargeEntete.etat === "invalide") {
       return { ok: false, motif: "INVALIDE" };
     }
-    if (surcharge.length > 0) {
+    if (source.surchargeEntete.etat === "valide") {
+      const surcharge = source.surchargeEntete.valeur.trim();
+      if (surcharge.length === 0 || surcharge.length > MAX_LONGUEUR_PORTEUR) {
+        return { ok: false, motif: "INVALIDE" };
+      }
       const client = await fabrique(surcharge);
       return { ok: true, client, provenance: "entete" };
     }
@@ -370,22 +381,46 @@ export async function ouvrirCoffre<T>(
   return { ok: true, client, provenance: "coffre" };
 }
 
-const MOTIF_PARAM_SENSIBLE_URL =
-  /((?:^|[?&])(?:key|api_key|apikey|access_token|refresh_token|client_secret|code_verifier|code|token)=)[^&#\s"']+/gi;
+const PARAMS_SENSIBLES_URL = new Set([
+  "key",
+  "api_key",
+  "apikey",
+  "access_token",
+  "refresh_token",
+  "client_secret",
+  "code_verifier",
+  "code",
+  "token",
+]);
+const MOTIF_PARAM_URL = /((?:^|[?&])([^=?&#\s"'/]+)=)[^&#\s"']+/g;
 const MOTIF_BEARER = /(\bBearer\s+)[^\s,;|"'<>]+/gi;
 const MOTIF_ENTETE_SENSIBLE =
   /(\b(?:x-(?:clef|api-key)[A-Za-z0-9-]*|authorization)\s*:\s*)(?!Bearer\b|\[EXPURGE\])[^\r\n,;|"']+/gi;
 const MOTIF_SEGMENT_OAUTH_MCP = /(\/mcp\/oauth\/)[^/?#\s"']+/gi;
 const MOTIF_SEGMENT_MCP = /(\/mcp\/)(?!(?:server-card|oauth)(?:[/?#\s"']|$))[^/?#\s"']+/gi;
 
+function expurgerParamsUrl(texte: string): string {
+  return texte.replace(MOTIF_PARAM_URL, (correspondance, prefixe: string, nomBrut: string) => {
+    let nomDecode = nomBrut;
+    try {
+      nomDecode = decodeURIComponent(nomBrut);
+    } catch {
+      // Séquence de pourcentage mal formée : comparer le nom brut tel quel.
+    }
+    return PARAMS_SENSIBLES_URL.has(nomDecode.toLowerCase())
+      ? `${prefixe}[EXPURGE]`
+      : correspondance;
+  });
+}
+
 /**
- * Expurge les paramètres d'authentification d'URL (`?key=`, `api_key=`, `token=`, `code=`, etc.),
- * les en-têtes `Bearer` et `X-Clef-*`, les segments `/mcp/<jeton>` ou `/mcp/oauth/<jeton>` ainsi
- * que toute chaîne sensible fournie explicitement (`G9`).
+ * Expurge les paramètres d'authentification d'URL (`?key=`, `api_key=`, `token=`, `code=`, etc.,
+ * y compris lorsque le nom du paramètre est encodé en pourcentage), les en-têtes `Bearer` et
+ * `X-Clef-*`, les segments `/mcp/<jeton>` ou `/mcp/oauth/<jeton>` ainsi que toute chaîne sensible
+ * fournie explicitement (`G9`).
  */
 export function expurger(texte: string, valeursSensibles: readonly string[] = []): string {
-  let sortie = texte
-    .replace(MOTIF_PARAM_SENSIBLE_URL, "$1[EXPURGE]")
+  let sortie = expurgerParamsUrl(texte)
     .replace(MOTIF_BEARER, "$1[EXPURGE]")
     .replace(MOTIF_ENTETE_SENSIBLE, "$1[EXPURGE]")
     .replace(MOTIF_SEGMENT_OAUTH_MCP, "$1[EXPURGE]")

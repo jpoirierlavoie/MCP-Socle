@@ -181,48 +181,85 @@ function formaterJourUtc(d: Date): string {
 }
 
 const MOTIF_ISO_HORODATAGE =
-  /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})(?:\.(\d{1,9}))?(Z|[+-]\d{2}:\d{2})$/;
-const MOTIF_SQLITE_HORODATAGE_UTC = /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2})(?:\.(\d{1,9}))?$/;
-const MOTIF_ISO_JOUR = /^(\d{4}-\d{2}-\d{2})$/;
+  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?(Z|([+-])(\d{2}):(\d{2}))$/;
+const MOTIF_SQLITE_HORODATAGE_UTC =
+  /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?$/;
+const MOTIF_ISO_JOUR = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+function dateCalendaireValide(annee: number, mois: number, jour: number): boolean {
+  if (mois < 1 || mois > 12 || jour < 1 || jour > 31) return false;
+  const temoin = new Date(0);
+  temoin.setUTCFullYear(annee, mois - 1, jour);
+  return (
+    temoin.getUTCFullYear() === annee &&
+    temoin.getUTCMonth() === mois - 1 &&
+    temoin.getUTCDate() === jour
+  );
+}
 
 /**
  * Convertit un horodatage stocké (`RFC 3339` avec ou sans millisecondes, `SQLite UTC`
  * `AAAA-MM-JJ HH:MM:SS` ou jour `AAAA-MM-JJ`) en époque millisecondes UTC.
  *
- * Rend `null` sur toute chaîne mal formée ou date calendaire inexistante afin que le contrôle
- * d'expiration échoue systématiquement fermé.
+ * Valide explicitement les composantes calendaires, horaires et de décalage horaire avant toute
+ * conversion UTC et rend `null` sur toute chaîne mal formée ou date calendaire inexistante afin
+ * que le contrôle d'expiration échoue systématiquement fermé.
  */
 export function horodatageUtcMs(brut: string): number | null {
   if (typeof brut !== "string" || brut.length === 0 || brut !== brut.trim()) return null;
 
-  let normalise: string;
-  let dateAttendueUtc: string | null = null;
+  let annee: number;
+  let mois: number;
+  let jour: number;
+  let heure = 0;
+  let minute = 0;
+  let seconde = 0;
+  let msFrac = 0;
+  let decalageMs = 0;
 
   const mIso = MOTIF_ISO_HORODATAGE.exec(brut);
   if (mIso) {
-    const frac = mIso[3] ? `.${mIso[3].slice(0, 3).padEnd(3, "0")}` : ".000";
-    normalise = `${mIso[1]}T${mIso[2]}${frac}${mIso[4]}`;
-    if (mIso[4] === "Z") dateAttendueUtc = mIso[1]!;
+    annee = Number(mIso[1]);
+    mois = Number(mIso[2]);
+    jour = Number(mIso[3]);
+    heure = Number(mIso[4]);
+    minute = Number(mIso[5]);
+    seconde = Number(mIso[6]);
+    msFrac = mIso[7] ? Number(mIso[7].slice(0, 3).padEnd(3, "0")) : 0;
+    if (mIso[9]) {
+      const decH = Number(mIso[10]);
+      const decM = Number(mIso[11]);
+      if (decH > 23 || decM > 59) return null;
+      const signe = mIso[9] === "+" ? 1 : -1;
+      decalageMs = signe * (decH * 60 + decM) * 60_000;
+    }
   } else {
     const mSqlite = MOTIF_SQLITE_HORODATAGE_UTC.exec(brut);
     if (mSqlite) {
-      const frac = mSqlite[3] ? `.${mSqlite[3].slice(0, 3).padEnd(3, "0")}` : ".000";
-      normalise = `${mSqlite[1]}T${mSqlite[2]}${frac}Z`;
-      dateAttendueUtc = mSqlite[1]!;
-    } else if (MOTIF_ISO_JOUR.test(brut)) {
-      normalise = `${brut}T00:00:00.000Z`;
-      dateAttendueUtc = brut;
+      annee = Number(mSqlite[1]);
+      mois = Number(mSqlite[2]);
+      jour = Number(mSqlite[3]);
+      heure = Number(mSqlite[4]);
+      minute = Number(mSqlite[5]);
+      seconde = Number(mSqlite[6]);
+      msFrac = mSqlite[7] ? Number(mSqlite[7].slice(0, 3).padEnd(3, "0")) : 0;
     } else {
-      return null;
+      const mJour = MOTIF_ISO_JOUR.exec(brut);
+      if (!mJour) return null;
+      annee = Number(mJour[1]);
+      mois = Number(mJour[2]);
+      jour = Number(mJour[3]);
     }
   }
 
-  const ms = Date.parse(normalise);
-  if (!Number.isFinite(ms)) return null;
-  if (dateAttendueUtc !== null && new Date(ms).toISOString().slice(0, 10) !== dateAttendueUtc) {
-    return null;
-  }
-  return ms;
+  if (!dateCalendaireValide(annee, mois, jour)) return null;
+  if (heure > 23 || minute > 59 || seconde > 59) return null;
+
+  const d = new Date(0);
+  d.setUTCFullYear(annee, mois - 1, jour);
+  d.setUTCHours(heure, minute, seconde, msFrac);
+  const ms = d.getTime() - decalageMs;
+  return Number.isFinite(ms) ? ms : null;
 }
 
 /**
@@ -264,10 +301,8 @@ export async function resoudreJeton(
       if (ligne.revoque_le !== null && ligne.revoque_le !== undefined) return null;
       if (ligne.expire_le !== null && ligne.expire_le !== undefined) {
         if (typeof ligne.expire_le !== "string") return null;
-        if (ligne.expire_le.length > 0) {
-          const expMs = horodatageUtcMs(ligne.expire_le);
-          if (expMs === null || expMs <= maintenantMs) return null;
-        }
+        const expMs = horodatageUtcMs(ligne.expire_le);
+        if (expMs === null || expMs <= maintenantMs) return null;
       }
       if (!estEtatServi(ligne.etat)) return null;
       if (!porteeAutorisee(ligne.portee, options.service)) return null;

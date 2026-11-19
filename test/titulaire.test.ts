@@ -7,6 +7,7 @@ import {
   estJetonFrappe,
   frapperJeton,
   LONGUEUR_QUEUE_JETON,
+  lirePorteurEntete,
   MAX_LONGUEUR_PORTEUR,
   ouvrir,
   type Porte,
@@ -63,10 +64,16 @@ describe("estJetonFrappe, queueJeton et porteurEntete", () => {
     expect(() => queueJeton("invalide")).toThrow();
   });
 
-  it("lit un en-tête de surcharge client borné à MAX_LONGUEUR_PORTEUR", () => {
+  it("lit un en-tête de surcharge client borné à MAX_LONGUEUR_PORTEUR et distingue absent vs invalide", () => {
     const rOk = new Request("https://exemple.test/mcp", {
       headers: { "X-Porteur-Externe": "  valeur-valide  " },
     });
+    expect(lirePorteurEntete(rOk, "X-Porteur-Externe")).toEqual({
+      etat: "valide",
+      valeur: "valeur-valide",
+    });
+    expect(lirePorteurEntete(rOk, "")).toEqual({ etat: "absent" });
+    expect(lirePorteurEntete(rOk, "X-Absent")).toEqual({ etat: "absent" });
     expect(porteurEntete(rOk, "X-Porteur-Externe")).toBe("valeur-valide");
     expect(porteurEntete(rOk, "")).toBeNull();
     expect(porteurEntete(rOk, "X-Absent")).toBeNull();
@@ -74,12 +81,19 @@ describe("estJetonFrappe, queueJeton et porteurEntete", () => {
     const rVide = new Request("https://exemple.test/mcp", {
       headers: { "X-Porteur-Externe": "   " },
     });
+    expect(lirePorteurEntete(rVide, "X-Porteur-Externe")).toEqual({ etat: "invalide" });
     expect(porteurEntete(rVide, "X-Porteur-Externe")).toBeNull();
 
     const rTropLong = new Request("https://exemple.test/mcp", {
       headers: { "X-Porteur-Externe": "x".repeat(MAX_LONGUEUR_PORTEUR + 1) },
     });
+    expect(lirePorteurEntete(rTropLong, "X-Porteur-Externe")).toEqual({ etat: "invalide" });
     expect(porteurEntete(rTropLong, "X-Porteur-Externe")).toBeNull();
+
+    const rTresLong = new Request("https://exemple.test/mcp", {
+      headers: { "X-Porteur-Externe": "x".repeat(MAX_LONGUEUR_PORTEUR * 2 + 1) },
+    });
+    expect(lirePorteurEntete(rTresLong, "X-Porteur-Externe")).toEqual({ etat: "invalide" });
   });
 });
 
@@ -280,8 +294,9 @@ describe("resoudreJeton — G7 (zéro oracle) et G21 (fermé par défaut)", () =
     const jSansMsExpire = frapperJeton();
     // Format SQLite "2026-11-18 23:59:59" est POSTÉRIEUR à HORLOGE_FIXE même si ' ' < 'T' en ASCII !
     const jSqliteEncoreValide = frapperJeton();
-    // Chaîne corrompue -> doit échouer FERMÉ (null), jamais ouvert !
+    // Chaîne corrompue ou vide -> doit échouer FERMÉ (null), jamais ouvert !
     const jDateCorrompue = frapperJeton();
+    const jDateVide = frapperJeton();
 
     const baseLigne = {
       jeton_id: "jet_t",
@@ -307,6 +322,10 @@ describe("resoudreJeton — G7 (zéro oracle) et G21 (fermé par défaut)", () =
         ...baseLigne,
         expire_le: "date-corrompue",
       },
+      [await empreinte(jDateVide)]: {
+        ...baseLigne,
+        expire_le: "",
+      },
     });
 
     expect(
@@ -314,6 +333,9 @@ describe("resoudreJeton — G7 (zéro oracle) et G21 (fermé par défaut)", () =
     ).toBeNull();
     expect(
       await resoudreJeton(depot, [jDateCorrompue], { service: "service_a", horloge: HORLOGE_FIXE }),
+    ).toBeNull();
+    expect(
+      await resoudreJeton(depot, [jDateVide], { service: "service_a", horloge: HORLOGE_FIXE }),
     ).toBeNull();
     expect(
       (
@@ -325,7 +347,15 @@ describe("resoudreJeton — G7 (zéro oracle) et G21 (fermé par défaut)", () =
     ).toBe("jet_sqlite_ok");
 
     expect(horodatageUtcMs("2026-02-30T00:00:00Z")).toBeNull();
+    expect(horodatageUtcMs("2026-02-30T00:00:00+00:00")).toBeNull();
+    expect(horodatageUtcMs("2026-02-29T12:00:00-05:00")).toBeNull();
+    expect(horodatageUtcMs("2026-04-31T23:59:59+02:00")).toBeNull();
+    expect(horodatageUtcMs("2026-11-18T24:00:00Z")).toBeNull();
+    expect(horodatageUtcMs("2026-11-18T12:00:00+25:00")).toBeNull();
+    expect(horodatageUtcMs("2026-11-18T12:00:00+00:99")).toBeNull();
     expect(horodatageUtcMs(" 2026-11-18T00:00:00Z")).toBeNull();
+    expect(horodatageUtcMs("2026-11-18T10:00:00-05:00")).toBe(Date.parse("2026-11-18T15:00:00Z"));
+    expect(horodatageUtcMs("2024-02-29T12:00:00+02:00")).toBe(Date.parse("2024-02-29T10:00:00Z"));
     expect(horodatageUtcMs("2026-11-18T14:30:45.123456Z")).toBe(
       Date.parse("2026-11-18T14:30:45.123Z"),
     );
