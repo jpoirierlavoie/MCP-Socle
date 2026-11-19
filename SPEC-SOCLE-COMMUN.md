@@ -8,8 +8,8 @@
 > Les considérations historiques initiales sont archivées dans `docs/archive/NOTE-OUVERTURE-PUBLIQUE.md`.
 > Ici figurent les contrats exécutoires.
 >
-> **Statut d'implémentation (`@poirierlavoie/mcp-socle` `v0.8.2` — Phase 1 livrée le 2026-11-18, `no-store` en `v0.8.1`, durcissement de validation en `v0.8.2`) :**
-> - **Livré dans `MCP-Socle` (`v0.8.2`) :** transport MCP `Streamable HTTP` sans état (`2026-07-28`,
+> **Statut d'implémentation (`@poirierlavoie/mcp-socle` `v0.8.3` — Phase 1 livrée le 2026-11-18, `no-store` en `v0.8.1`, durcissement de validation en `v0.8.2`, boucles locales élargies et RFC 7591 DCR sans état en `v0.8.3`) :**
+> - **Livré dans `MCP-Socle` (`v0.8.3`) :** transport MCP `Streamable HTTP` sans état (`2026-07-28`,
 >   `2025-11-25`, `2025-06-18`, `2025-03-26`), porteurs à temps constant (`Bearer`, `?key=`,
 >   `/mcp/<jeton>`, `lirePorteurEntete` / `porteurEntete`), résolution multilocataire D1 (`titulaire` / `jeton` avec
 >   portée unifiée `les_deux` ou par connecteur), coffre chiffré par enveloppe (`HKDF-SHA256` +
@@ -76,7 +76,7 @@ Enterprise et sous la limite stricte de `<= 64` caractères d'identifiant compos
 | # | Décision | Motif |
 |---|---|---|
 | S1 | Un dépôt partagé, **`MCP-Socle`** (`@poirierlavoie/mcp-socle`), source unique du **protocole MCP sans état**, de l'**identité / OAuth 2.1 / coffre** et des **primitives de gouverne et de télémétrie sans contenu**, sans aucun concept juridique. | **AMENDÉE les 2026-09-17 et 2026-11-18.** Trois Workers (`MCP-Acces`, `MCP-Legislation`, `MCP-Jurisprudence`) partagent la même base D1 `DB_IDENTITE`, la même enveloppe cryptographique de coffre et les mêmes contrats OAuth 2.1 / quotas : dupliquer ces primitives dans trois dépôts garantirait une dérive de sécurité. Le socle reste 100 % agnostique du domaine juridique (vérifié par `test/doc.test.ts`). |
-| S2 | Le socle est une **dépendance de développement**, empaquetée par `esbuild` au déploiement, par étiquette git immuable (`#v0.8.2`). Jamais une dépendance d'exécution. | Zéro dépendance `dependencies` dans les Workers déployés ; code audité, versionné et figé par tag semver immuable. |
+| S2 | Le socle est une **dépendance de développement**, empaquetée par `esbuild` au déploiement, par étiquette git immuable (`#v0.8.3`). Jamais une dépendance d'exécution. | Zéro dépendance `dependencies` dans les Workers déployés ; code audité, versionné et figé par tag semver immuable. |
 | S3 | Les Workers servent **`2026-07-28` en tête**, puis `2025-11-25`, `2025-06-18` et `2025-03-26` (tant qu'un client ou script de veille omet l'en-tête). | Protocole sans état : ni session, ni `Mcp-Session-Id`, ni Durable Object routé. |
 | S4 | `MCP-Legislation` opère hors `McpAgent`, `@modelcontextprotocol/sdk` et Durable Object. | Supprime l'état par session et le coût de stockage par poignée. |
 | S5 | **Sortie double partout — ABANDONNÉE le 2026-09-17 sur mesure.** | Mesuré en production : `tools/list` passait de 12 279 à 43 145 octets (~3 070 à ~10 786 jetons par session). `MCP-Jurisprudence` demeure en prose seule ; `MCP-Legislation` conserve sa `structuredContent` plate existante sans `outputSchema`. |
@@ -142,7 +142,7 @@ MCP-Socle/
 ├── test/                     suite Vitest hors ligne exécutée dans workerd (Miniflare)
 ├── LICENSE                   CC-BY-NC-SA-4.0 + autorisation complémentaire de pratique professionnelle
 ├── osv-scanner.toml          registre daté et motivé des exemptions OSV de devDependencies
-└── package.json              "type": "module", version 0.8.2, zéro dépendance d'exécution
+└── package.json              "type": "module", version 0.8.3, zéro dépendance d'exécution
 ```
 
 **Frontière infranchissable :** `MCP-Socle` ne contient aucun concept juridique (`test/doc.test.ts`).

@@ -14,7 +14,7 @@ En **dépendance de développement**, par étiquette git immuable, et empaqueté
 
 ```jsonc
 "devDependencies": {
-  "@poirierlavoie/mcp-socle": "github:jpoirierlavoie/MCP-Socle#v0.8.2"
+  "@poirierlavoie/mcp-socle": "github:jpoirierlavoie/MCP-Socle#v0.8.3"
 }
 ```
 
@@ -45,7 +45,7 @@ Les tests s'exécutent hors ligne dans `workerd` (`@cloudflare/vitest-plugin`) a
 | [`src/protocole/LISEZ-MOI.md`](src/protocole/LISEZ-MOI.md) | inventaire de `protocole/` (`rpc.ts`, `valide.ts`, `registre.ts`, `versions.ts`, `entetes.ts`, `meta.ts`, `decouverte.ts`, `http.ts`, `serveur.ts`) |
 | [`docs/archive/`](docs/archive/) | documents historiques d'ouverture et de planification (`NOTE-OUVERTURE-PUBLIQUE.md`, `FEUILLE-DE-ROUTE.md`, `PROCEDURES-MANUELLES.md`) |
 
-## État (`v0.8.2` — Phase 1 livrée + durcissement `no-store`, `lirePorteurEntete`, `expurger` et `horodatageUtcMs`)
+## État (`v0.8.3` — Boucles locales élargies et validation RFC 7591 DCR sans état)
 
 - **Protocole (`src/protocole/`) :** enveloppe JSON-RPC 2.0, validateur JSON Schema **fermé par défaut** (`TypeConnu`, sûreté prototype), registre et exécuteur d'outils (`appelerOutil`), négociation de versions (`negocierInitialize`), validation UTF-8 fatale des en-têtes `2026-07-28`, fiche SEP-2127 (`construireCarteServeur`, `repondreCarteServeur`), origines CORS (`claude.ai`, `claude.com`, `gemini.google.com`, `aistudio.google.com`), `preflight` extensible, utilitaires (`drapeau`, `reponseSante` et `jsonResponse` avec `Cache-Control: no-store`), lecture bornée `64 Kio` et répartiteur HTTP sans état `servirRequeteMcp`.
 - **Identité, coffre, OAuth 2.1 et gouverne (`src/identite/`) :**
@@ -53,6 +53,6 @@ Les tests s'exécutent hors ligne dans `workerd` (`@cloudflare/vitest-plugin`) a
   - Double posture de refus : `404` sans corps ni oracle pour la monture directe `/mcp`, et `401` + `WWW-Authenticate: Bearer resource_metadata="..."` (RFC 9728) pour la monture `/mcp/oauth`, tous émis avec `Cache-Control: no-store`.
   - Résolution multilocataire D1 (`resoudreJeton`, `ouvrirPrincipal`, `creerDepotJetonsD1`) avec portée unifiée par défaut (`les_deux`) ou par service et coexistence transitoire avec les secrets d'instance.
   - Coffre chiffré par enveloppe (`scellerCoffre`, `ouvrirCoffre` en fermeture stricte sans exposition du texte clair, `empreinteCoffre` et `repereCoffre` HMAC à clé maître, `expurger`).
-  - Découverte et sécurité OAuth 2.1 (`construireRessourceProtegee` RFC 9728, `construireServeurAutorisation` RFC 8414, PKCE `S256` obligatoire `verifierDefiPkceS256`, `porteesCanoniques`, validation des `redirect_uri` et des identifiants clients CIMD anti-SSRF) pour Gemini App, Gemini Enterprise et Claude Research.
+  - Découverte et sécurité OAuth 2.1 (`construireRessourceProtegee` RFC 9728, `construireServeurAutorisation` RFC 8414, PKCE `S256` obligatoire `verifierDefiPkceS256`, `porteesCanoniques`, validation des `redirect_uri` dont Antigravity / `/oauth-callback`, validation d'inscription dynamique RFC 7591 `validerMetadonneesInscriptionDcr` et validation CIMD anti-SSRF) pour Claude Code/Desktop, Claude Research, Antigravity, Gemini CLI, Gemini App et Gemini Enterprise.
   - Gouverne à deux étages compatible avec les rafales Deep Research (`verifierDebitPreAuth`, `enregistrerEchecAuth`, `verifierDebitTitulaire`, quotas journaliers `verifierQuotaJour`), sas d'admission anti-squattage (`demande_acces`, `invitation_acces`, `resoudreModeAdmission`), purges indexées et suppression de compte en cascade Loi 25 (`purgerRetentionsD1`, `supprimerCompteTitulaireD1`, `retirerEntreeCoffreD1`, `POLITIQUES_RETENTION_IDENTITE`, `verifierCouvertureRetentionSchema`) et télémétrie technique sans contenu (`formaterEvenementTechnique`, rétention 90 jours, schéma canonique `construireSchemaIdentiteD1` et garde `verifierSchemaSansContenuIdentifiant`).
 - **Phases aval (dépôts consommateurs) :** déploiement du portail `MCP-Acces` et de la base `DB_IDENTITE` (Phase 2), bascule multilocataire et double monture `/mcp` + `/mcp/oauth` dans `MCP-Legislation` et `MCP-Jurisprudence` (Phase 3), puis alignement documentaire et E2E en direct dans `droit-civil-quebecois` et `MCP-Outils` (Phase 4).

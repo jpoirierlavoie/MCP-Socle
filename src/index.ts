@@ -97,7 +97,10 @@ export {
 export {
   CHEMIN_RESSOURCE_PROTEGEE,
   CHEMIN_SERVEUR_AUTORISATION,
+  CHEMINS_BOUCLE_LOCALE_PAR_DEFAUT,
   type ClientCimdValide,
+  type ClientDcrValide,
+  type CodeErreurValidationDcr,
   calculerDefiPkceS256,
   construireRessourceProtegee,
   construireServeurAutorisation,
@@ -108,6 +111,7 @@ export {
   METHODE_PKCE_S256,
   type MetadonneesRessourceProtegee,
   type MetadonneesServeurAutorisation,
+  type MethodeAuthEndpointTokenDcr,
   MOTIF_SERVICE_PORTEE,
   normaliserPorteeOAuth,
   type OptionsRessourceProtegee,
@@ -115,12 +119,14 @@ export {
   type OptionsValidationRedirection,
   porteesCanoniques,
   type ResultatValidationClientCimd,
+  type ResultatValidationInscriptionDcr,
   repondreRessourceProtegee,
   repondreServeurAutorisation,
   URIS_REDIRECTION_CLAUDE,
   URIS_REDIRECTION_GOOGLE_CONNUES,
   urlMetadonneesRessource,
   validerMetadonneesClientCimd,
+  validerMetadonneesInscriptionDcr,
   verifierDefiPkceS256,
 } from "./identite/oauth";
 export {

@@ -21,13 +21,20 @@ export const URIS_REDIRECTION_CLAUDE = [
   "https://claude.com/api/mcp/auth_callback",
 ] as const;
 
-/** URIs de rappel connues de Google Cloud / Vertex AI Gemini Enterprise pour connecteurs OAuth. */
+/** URIs de rappel connues de Google Cloud / Vertex AI / Antigravity pour connecteurs OAuth. */
 export const URIS_REDIRECTION_GOOGLE_CONNUES = [
   "https://vertexaisearch.cloud.google.com/oauth-redirect",
   "https://vertexaisearch.cloud.google.com/console/oauth/default_oauth.html",
+  "https://antigravity.google/oauth-callback",
 ] as const;
 
-const CHEMINS_BOUCLE_LOCALE_PAR_DEFAUT = ["/callback", "/oauth/callback"] as const;
+export const CHEMINS_BOUCLE_LOCALE_PAR_DEFAUT = [
+  "/callback",
+  "/oauth/callback",
+  "/oauth-callback",
+  "/oauth2callback",
+  "/auth/callback",
+] as const;
 
 function contientControleOuEspaceUrl(brut: string): boolean {
   for (let i = 0; i < brut.length; i++) {
@@ -335,7 +342,7 @@ export interface OptionsValidationRedirection {
   urisExactesAutorisees?: readonly string[];
   /** Autoriser les rappels de boucle locale RFC 8252 §7.3 (`127.0.0.1`, `[::1]`, `localhost`). */
   autoriserBoucleLocale?: boolean;
-  /** Chemins exacts admis sur la boucle locale. Défaut : `["/callback", "/oauth/callback"]`. */
+  /** Chemins exacts admis sur la boucle locale. Défaut : `CHEMINS_BOUCLE_LOCALE_PAR_DEFAUT`. */
   cheminsBoucleLocale?: readonly string[];
 }
 
@@ -549,7 +556,7 @@ function estUriRedirectionCimdValide(uri: string, autoriserBoucleLocale: boolean
 }
 
 /**
- * Valide hors réseau le document JSON d'un client CIMD récupéré via `fetch(clientId, { redirect: "error" })` :
+ * Valide hors réseau le document JSON d'un client CIMD récupéré via `fetch(clientId, { redirect: "manual" })` :
  * concordance exacte de `client_id`, interdiction de tout secret symétrique (`client_secret*`) et
  * validation stricte du tableau `redirect_uris`.
  */
@@ -617,6 +624,165 @@ export function validerMetadonneesClientCimd(
       ...(clientName !== undefined ? { clientName } : {}),
       redirectUris: uris,
       tokenEndpointAuthMethod: methodeAuthBrute,
+    },
+  };
+}
+
+export type MethodeAuthEndpointTokenDcr = "none" | "client_secret_post" | "client_secret_basic";
+
+export interface ClientDcrValide {
+  readonly clientName?: string;
+  readonly redirectUris: readonly string[];
+  readonly tokenEndpointAuthMethod: MethodeAuthEndpointTokenDcr;
+  readonly grantTypes: readonly ["authorization_code"];
+  readonly responseTypes: readonly ["code"];
+}
+
+export type CodeErreurValidationDcr = "invalid_redirect_uri" | "invalid_client_metadata";
+
+export type ResultatValidationInscriptionDcr =
+  | { readonly ok: true; readonly client: ClientDcrValide }
+  | {
+      readonly ok: false;
+      readonly codeErreur: CodeErreurValidationDcr;
+      readonly motif: string;
+    };
+
+function contientControleTexte(brut: string): boolean {
+  for (let i = 0; i < brut.length; i++) {
+    const code = brut.charCodeAt(i);
+    if (code < 0x20 || code === 0x7f) return true;
+  }
+  return false;
+}
+
+/**
+ * Valide hors réseau une requête RFC 7591 d'inscription dynamique de client (`POST /oauth/register`)
+ * en bloquant toute URI non sécurisée / SSRF (`invalid_redirect_uri`) et en bornant strictement
+ * les métadonnées admises (PKCE `authorization_code` + `code` uniquement ; `"refresh_token"` éventuel
+ * dans la demande est toléré sans être réémis).
+ */
+export function validerMetadonneesInscriptionDcr(
+  document: unknown,
+  options: { autoriserBoucleLocale?: boolean } = {},
+): ResultatValidationInscriptionDcr {
+  if (typeof document !== "object" || document === null || Array.isArray(document)) {
+    return {
+      ok: false,
+      codeErreur: "invalid_client_metadata",
+      motif: "Requête d'inscription JSON non objet.",
+    };
+  }
+  const doc = document as Record<string, unknown>;
+
+  if (
+    !Object.hasOwn(doc, "redirect_uris") ||
+    !Array.isArray(doc.redirect_uris) ||
+    doc.redirect_uris.length === 0 ||
+    doc.redirect_uris.length > 8
+  ) {
+    return {
+      ok: false,
+      codeErreur: "invalid_redirect_uri",
+      motif: "Tableau redirect_uris manquant ou hors bornes (1..8).",
+    };
+  }
+
+  const autoriserBoucle = options.autoriserBoucleLocale === true;
+  const uris: string[] = [];
+  for (const entree of doc.redirect_uris) {
+    if (typeof entree !== "string" || !estUriRedirectionCimdValide(entree, autoriserBoucle)) {
+      return {
+        ok: false,
+        codeErreur: "invalid_redirect_uri",
+        motif: "URI de redirection manquante, invalide ou non sécurisée.",
+      };
+    }
+    if (!uris.includes(entree)) uris.push(entree);
+  }
+  if (uris.length === 0 || JSON.stringify(uris).length > 1_024) {
+    return {
+      ok: false,
+      codeErreur: "invalid_redirect_uri",
+      motif: "Ensemble redirect_uris vide ou trop volumineux.",
+    };
+  }
+
+  const methodeBrute = Object.hasOwn(doc, "token_endpoint_auth_method")
+    ? (doc.token_endpoint_auth_method ?? "none")
+    : "none";
+  if (
+    methodeBrute !== "none" &&
+    methodeBrute !== "client_secret_post" &&
+    methodeBrute !== "client_secret_basic"
+  ) {
+    return {
+      ok: false,
+      codeErreur: "invalid_client_metadata",
+      motif: "Méthode token_endpoint_auth_method non prise en charge.",
+    };
+  }
+
+  if (Object.hasOwn(doc, "grant_types") && doc.grant_types !== undefined) {
+    if (
+      !Array.isArray(doc.grant_types) ||
+      doc.grant_types.length === 0 ||
+      doc.grant_types.length > 4 ||
+      !doc.grant_types.every(
+        (g): g is string => g === "authorization_code" || g === "refresh_token",
+      ) ||
+      !doc.grant_types.includes("authorization_code")
+    ) {
+      return {
+        ok: false,
+        codeErreur: "invalid_client_metadata",
+        motif: "Seul grant_types incluant authorization_code est pris en charge.",
+      };
+    }
+  }
+
+  if (Object.hasOwn(doc, "response_types") && doc.response_types !== undefined) {
+    if (
+      !Array.isArray(doc.response_types) ||
+      doc.response_types.length !== 1 ||
+      doc.response_types[0] !== "code"
+    ) {
+      return {
+        ok: false,
+        codeErreur: "invalid_client_metadata",
+        motif: "Seul response_types ['code'] est pris en charge.",
+      };
+    }
+  }
+
+  let clientName: string | undefined;
+  if (Object.hasOwn(doc, "client_name") && doc.client_name !== undefined) {
+    if (typeof doc.client_name !== "string" || contientControleTexte(doc.client_name)) {
+      return {
+        ok: false,
+        codeErreur: "invalid_client_metadata",
+        motif: "Champ client_name invalide.",
+      };
+    }
+    const propre = doc.client_name.trim();
+    if (propre.length === 0 || propre.length > 80) {
+      return {
+        ok: false,
+        codeErreur: "invalid_client_metadata",
+        motif: "Champ client_name vide ou trop long (1..80).",
+      };
+    }
+    clientName = propre;
+  }
+
+  return {
+    ok: true,
+    client: {
+      ...(clientName !== undefined ? { clientName } : {}),
+      redirectUris: uris,
+      tokenEndpointAuthMethod: methodeBrute,
+      grantTypes: ["authorization_code"],
+      responseTypes: ["code"],
     },
   };
 }

@@ -17,6 +17,7 @@ import {
   URIS_REDIRECTION_GOOGLE_CONNUES,
   urlMetadonneesRessource,
   validerMetadonneesClientCimd,
+  validerMetadonneesInscriptionDcr,
   verifierDefiPkceS256,
 } from "../src/identite/oauth";
 import { construireEnteteBearer, refuser } from "../src/identite/refus";
@@ -175,6 +176,11 @@ describe("G36 — Validation des redirect_uri, CIMD anti-SSRF et normalisation d
         urisExactesAutorisees: urisAutorisees,
       }),
     ).toBe(true);
+    expect(
+      estUriRedirectionAutorisee("https://antigravity.google/oauth-callback", {
+        urisExactesAutorisees: urisAutorisees,
+      }),
+    ).toBe(true);
 
     // Boucle locale désactivée par défaut :
     expect(estUriRedirectionAutorisee("http://127.0.0.1:54321/callback")).toBe(false);
@@ -185,6 +191,9 @@ describe("G36 — Validation des redirect_uri, CIMD anti-SSRF et normalisation d
       "http://localhost/callback",
       "http://127.0.0.1:54321/callback",
       "http://localhost:8080/oauth/callback",
+      "http://127.0.0.1:54321/oauth-callback",
+      "http://localhost:8080/oauth2callback",
+      "http://127.0.0.1:8080/auth/callback",
       "http://[::1]:3000/callback",
     ]) {
       expect(estUriRedirectionAutorisee(locale, { autoriserBoucleLocale: true })).toBe(true);
@@ -394,5 +403,104 @@ describe("G36 — Validation des redirect_uri, CIMD anti-SSRF et normalisation d
         )
         .run(),
     ).rejects.toThrow();
+  });
+});
+
+describe("RFC 7591 — Validation hors réseau d'inscription dynamique DCR", () => {
+  it("valide les clients publics et confidentiels autorisés et normalise grant_types/response_types", () => {
+    const publicLoopback = validerMetadonneesInscriptionDcr(
+      {
+        client_name: "  Antigravity IDE  ",
+        redirect_uris: [
+          "http://127.0.0.1:54321/oauth-callback",
+          "http://127.0.0.1:54321/oauth-callback",
+        ],
+        grant_types: ["authorization_code", "refresh_token"],
+        response_types: ["code"],
+        token_endpoint_auth_method: "none",
+      },
+      { autoriserBoucleLocale: true },
+    );
+    expect(publicLoopback).toEqual({
+      ok: true,
+      client: {
+        clientName: "Antigravity IDE",
+        redirectUris: ["http://127.0.0.1:54321/oauth-callback"],
+        tokenEndpointAuthMethod: "none",
+        grantTypes: ["authorization_code"],
+        responseTypes: ["code"],
+      },
+    });
+
+    const publicDefaut = validerMetadonneesInscriptionDcr({
+      redirect_uris: ["https://claude.ai/api/mcp/auth_callback"],
+    });
+    expect(publicDefaut).toEqual({
+      ok: true,
+      client: {
+        redirectUris: ["https://claude.ai/api/mcp/auth_callback"],
+        tokenEndpointAuthMethod: "none",
+        grantTypes: ["authorization_code"],
+        responseTypes: ["code"],
+      },
+    });
+
+    const confidentielPost = validerMetadonneesInscriptionDcr({
+      client_name: "Connecteur Confidentiel",
+      redirect_uris: ["https://claude.com/api/mcp/auth_callback"],
+      token_endpoint_auth_method: "client_secret_post",
+    });
+    expect(confidentielPost).toEqual({
+      ok: true,
+      client: {
+        clientName: "Connecteur Confidentiel",
+        redirectUris: ["https://claude.com/api/mcp/auth_callback"],
+        tokenEndpointAuthMethod: "client_secret_post",
+        grantTypes: ["authorization_code"],
+        responseTypes: ["code"],
+      },
+    });
+
+    const confidentielBasic = validerMetadonneesInscriptionDcr({
+      redirect_uris: ["https://antigravity.google/oauth-callback"],
+      token_endpoint_auth_method: "client_secret_basic",
+    });
+    expect(confidentielBasic.ok).toBe(true);
+  });
+
+  it("rejette les URIs dangereuses ou SSRF (invalid_redirect_uri) et métadonnées non conformes (invalid_client_metadata)", () => {
+    for (const mauvaisUri of [
+      [],
+      Array.from({ length: 9 }, (_, i) => `https://app${i}.exemple.org/cb`),
+      ["http://exemple.org/callback"],
+      ["https://127.0.0.1/callback"],
+      ["https://169.254.169.254/latest/meta-data"],
+      ["http://127.0.0.1:54321/oauth-callback"], // boucle locale non activée
+      ["javascript:alert(1)"],
+    ]) {
+      const res = validerMetadonneesInscriptionDcr({ redirect_uris: mauvaisUri });
+      expect(res.ok, JSON.stringify(mauvaisUri)).toBe(false);
+      if (!res.ok) {
+        expect(res.codeErreur).toBe("invalid_redirect_uri");
+      }
+    }
+
+    for (const mauvaisDoc of [
+      null,
+      [],
+      { redirect_uris: ["https://claude.ai/cb"], grant_types: ["client_credentials"] },
+      { redirect_uris: ["https://claude.ai/cb"], grant_types: ["refresh_token"] },
+      { redirect_uris: ["https://claude.ai/cb"], response_types: ["token"] },
+      { redirect_uris: ["https://claude.ai/cb"], token_endpoint_auth_method: "private_key_jwt" },
+      { redirect_uris: ["https://claude.ai/cb"], client_name: "Bad\r\nName" },
+      { redirect_uris: ["https://claude.ai/cb"], client_name: "   " },
+      { redirect_uris: ["https://claude.ai/cb"], client_name: "x".repeat(81) },
+    ]) {
+      const res = validerMetadonneesInscriptionDcr(mauvaisDoc);
+      expect(res.ok, JSON.stringify(mauvaisDoc)).toBe(false);
+      if (!res.ok) {
+        expect(res.codeErreur).toBe("invalid_client_metadata");
+      }
+    }
   });
 });
