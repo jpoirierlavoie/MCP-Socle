@@ -28,6 +28,11 @@ export const URIS_REDIRECTION_GOOGLE_CONNUES = [
   "https://antigravity.google/oauth-callback",
 ] as const;
 
+/** URI de rappel stable OpenAI / ChatGPT lorsque RFC 9207 `iss` est annoncé. */
+export const URIS_REDIRECTION_OPENAI_CONNUES = [
+  "https://chatgpt.com/connector_platform_oauth_redirect",
+] as const;
+
 export const CHEMINS_BOUCLE_LOCALE_PAR_DEFAUT = [
   "/callback",
   "/oauth/callback",
@@ -156,6 +161,7 @@ export interface OptionsServeurAutorisation {
     | "client_secret_basic"
   )[];
   clientIdMetadataDocumentSupported?: boolean;
+  authorizationResponseIssParameterSupported?: boolean;
   serviceDocumentation?: string;
 }
 
@@ -168,6 +174,7 @@ export interface MetadonneesServeurAutorisation {
   code_challenge_methods_supported: ["S256"];
   token_endpoint_auth_methods_supported: string[];
   client_id_metadata_document_supported: boolean;
+  authorization_response_iss_parameter_supported?: boolean;
   revocation_endpoint?: string;
   registration_endpoint?: string;
   scopes_supported?: string[];
@@ -204,6 +211,12 @@ export function construireServeurAutorisation(
       ? [...options.tokenEndpointAuthMethodsSupported]
       : ["none", "client_secret_post", "client_secret_basic"],
     client_id_metadata_document_supported: options.clientIdMetadataDocumentSupported ?? true,
+    ...(options.authorizationResponseIssParameterSupported !== undefined
+      ? {
+          authorization_response_iss_parameter_supported:
+            options.authorizationResponseIssParameterSupported,
+        }
+      : {}),
   };
 
   if (options.revocationEndpoint) {
@@ -523,6 +536,7 @@ export interface ClientCimdValide {
   readonly clientName?: string;
   readonly redirectUris: readonly string[];
   readonly tokenEndpointAuthMethod: "none" | "private_key_jwt";
+  readonly tokenEndpointAuthMethodsSupported?: readonly ("none" | "private_key_jwt")[];
 }
 
 export type ResultatValidationClientCimd =
@@ -589,6 +603,29 @@ export function validerMetadonneesClientCimd(
     };
   }
 
+  let methodesAuthSupportees: readonly ("none" | "private_key_jwt")[] | undefined;
+  if (
+    Object.hasOwn(doc, "token_endpoint_auth_methods_supported") &&
+    doc.token_endpoint_auth_methods_supported !== undefined
+  ) {
+    const brutSupportees = doc.token_endpoint_auth_methods_supported;
+    if (
+      !Array.isArray(brutSupportees) ||
+      brutSupportees.length === 0 ||
+      brutSupportees.length > 8 ||
+      !brutSupportees.every(
+        (m): m is "none" | "private_key_jwt" => m === "none" || m === "private_key_jwt",
+      )
+    ) {
+      return {
+        ok: false,
+        motif:
+          "Tableau token_endpoint_auth_methods_supported CIMD invalide ou méthodes non prises en charge.",
+      };
+    }
+    methodesAuthSupportees = [...new Set(brutSupportees)];
+  }
+
   if (!Object.hasOwn(doc, "redirect_uris") || !Array.isArray(doc.redirect_uris)) {
     return { ok: false, motif: "Tableau redirect_uris manquant." };
   }
@@ -624,6 +661,9 @@ export function validerMetadonneesClientCimd(
       ...(clientName !== undefined ? { clientName } : {}),
       redirectUris: uris,
       tokenEndpointAuthMethod: methodeAuthBrute,
+      ...(methodesAuthSupportees !== undefined
+        ? { tokenEndpointAuthMethodsSupported: methodesAuthSupportees }
+        : {}),
     },
   };
 }

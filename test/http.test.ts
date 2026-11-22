@@ -28,6 +28,9 @@ describe("origines", () => {
       "https://claude.com",
       "https://gemini.google.com",
       "https://aistudio.google.com",
+      "https://chatgpt.com",
+      "https://chat.openai.com",
+      "https://platform.openai.com",
     ]);
   });
 
