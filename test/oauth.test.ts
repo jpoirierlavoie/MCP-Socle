@@ -15,6 +15,7 @@ import {
   repondreServeurAutorisation,
   URIS_REDIRECTION_CLAUDE,
   URIS_REDIRECTION_GOOGLE_CONNUES,
+  URIS_REDIRECTION_OPENAI_CONNUES,
   urlMetadonneesRessource,
   validerMetadonneesClientCimd,
   validerMetadonneesInscriptionDcr,
@@ -130,6 +131,7 @@ describe("RFC 9728 et RFC 8414 — découverte OAuth 2.1", () => {
       issuer: "https://acces.exemple.test/",
       scopesSupported: ["les_deux"],
       revocationEndpoint: "https://acces.exemple.test/oauth/revoke",
+      authorizationResponseIssParameterSupported: true,
     });
 
     expect(asMeta.issuer).toBe("https://acces.exemple.test");
@@ -137,6 +139,7 @@ describe("RFC 9728 et RFC 8414 — découverte OAuth 2.1", () => {
     expect(asMeta.token_endpoint).toBe("https://acces.exemple.test/oauth/token");
     expect(asMeta.code_challenge_methods_supported).toEqual(["S256"]);
     expect(asMeta.client_id_metadata_document_supported).toBe(true);
+    expect(asMeta.authorization_response_iss_parameter_supported).toBe(true);
 
     const rep = repondreServeurAutorisation("GET", asMeta);
     expect(rep.status).toBe(200);
@@ -164,7 +167,16 @@ describe("G35 — PKCE S256 (vecteur officiel RFC 7636 Annexe B et rejets OAuth 
 
 describe("G36 — Validation des redirect_uri, CIMD anti-SSRF et normalisation de portée", () => {
   it("autorise les rappels HTTPS exacts (Claude, Gemini/Vertex) et rejette espaces, caractères de contrôle et normalisations implicites", () => {
-    const urisAutorisees = [...URIS_REDIRECTION_CLAUDE, ...URIS_REDIRECTION_GOOGLE_CONNUES];
+    const urisAutorisees = [
+      ...URIS_REDIRECTION_CLAUDE,
+      ...URIS_REDIRECTION_GOOGLE_CONNUES,
+      ...URIS_REDIRECTION_OPENAI_CONNUES,
+    ];
+    expect(
+      estUriRedirectionAutorisee("https://chatgpt.com/connector_platform_oauth_redirect", {
+        urisExactesAutorisees: urisAutorisees,
+      }),
+    ).toBe(true);
 
     expect(
       estUriRedirectionAutorisee("https://claude.ai/api/mcp/auth_callback", {
@@ -292,6 +304,33 @@ describe("G36 — Validation des redirect_uri, CIMD anti-SSRF et normalisation d
         tokenEndpointAuthMethod: "none",
       },
     });
+
+    const sep3149 = validerMetadonneesClientCimd("https://chatgpt.com/oauth/client.json", {
+      client_id: "https://chatgpt.com/oauth/client.json",
+      client_name: "ChatGPT",
+      redirect_uris: ["https://chatgpt.com/connector_platform_oauth_redirect"],
+      token_endpoint_auth_method: "private_key_jwt",
+      token_endpoint_auth_methods_supported: ["none", "private_key_jwt"],
+    });
+    expect(sep3149).toEqual({
+      ok: true,
+      client: {
+        clientId: "https://chatgpt.com/oauth/client.json",
+        clientName: "ChatGPT",
+        redirectUris: ["https://chatgpt.com/connector_platform_oauth_redirect"],
+        tokenEndpointAuthMethod: "private_key_jwt",
+        tokenEndpointAuthMethodsSupported: ["none", "private_key_jwt"],
+      },
+    });
+
+    expect(
+      validerMetadonneesClientCimd("https://chatgpt.com/oauth/client.json", {
+        client_id: "https://chatgpt.com/oauth/client.json",
+        redirect_uris: ["https://chatgpt.com/connector_platform_oauth_redirect"],
+        token_endpoint_auth_method: "private_key_jwt",
+        token_endpoint_auth_methods_supported: ["client_secret_post"],
+      }).ok,
+    ).toBe(false);
 
     // Rejette client_id discordant, client_secret public ou redirect_uri SSRF :
     expect(
