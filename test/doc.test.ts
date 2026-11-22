@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import claudeMd from "../CLAUDE.md?raw";
 import geminiMd from "../GEMINI.md?raw";
 import licenseRaw from "../LICENSE?raw";
+import noticeRaw from "../NOTICE?raw";
 import osvTomlRaw from "../osv-scanner.toml?raw";
 import pkgRaw from "../package.json?raw";
 import readmeMd from "../README.md?raw";
@@ -42,7 +43,7 @@ describe("hygiène documentaire et manifeste", () => {
     };
     expect(pkg.name).toBe("@poirierlavoie/mcp-socle");
     expect(pkg.version).toBe("0.8.3");
-    expect(pkg.license).toBe("CC-BY-NC-SA-4.0");
+    expect(pkg.license).toBe("Apache-2.0");
     expect(Object.keys(pkg.dependencies ?? {})).toEqual([]);
     expect(pkg.scripts?.["type-check"]).toBe("tsc --noEmit");
     expect(pkg.scripts?.lint).toBe("biome check .");
@@ -67,13 +68,12 @@ describe("hygiène documentaire et manifeste", () => {
     expect(geminiMd).not.toContain("# MCP-Socle-Juridique");
   });
 
-  it("LICENSE conserve CC-BY-NC-SA-4.0 et inclut l'autorisation bilingue de pratique professionnelle", () => {
-    expect(licenseRaw).toContain("SPDX Identifier: CC-BY-NC-SA-4.0");
-    expect(licenseRaw).toContain(
-      "AUTORISATION COMPLÉMENTAIRE DE PRATIQUE PROFESSIONNELLE DU DROIT",
-    );
-    expect(licenseRaw).toContain("COMPANION PROFESSIONAL LEGAL PRACTICE GRANT");
-    expect(licenseRaw).toContain("Attribution-NonCommercial-ShareAlike 4.0 International");
+  it("LICENSE conserve Apache-2.0 et NOTICE porte les mentions d'attribution et de non-revendication", () => {
+    expect(licenseRaw).toContain("Apache License");
+    expect(licenseRaw).toContain("Version 2.0, January 2004");
+    expect(noticeRaw).toContain("Apache-2.0");
+    expect(noticeRaw.startsWith("\uFEFF")).toBe(false);
+    expect(noticeRaw.includes("\r")).toBe(false);
   });
 
   it("la documentation active ne porte plus les anciens noms de dépôts ni d'étiquette périmée", () => {

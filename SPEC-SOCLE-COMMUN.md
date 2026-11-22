@@ -19,7 +19,7 @@
 >   compatible avec les rafales **Deep Research** (quarantaine des IP en échec séparée du trafic
 >   authentifié + débit par `titulaire_id` + quotas journaliers par classe), télémétrie technique
 >   sans contenu (minute UTC, rétention 90 jours, garde SQL `verifierSchemaSansContenuIdentifiant`)
->   et autorisation complémentaire de pratique professionnelle du droit dans `LICENSE`.
+>   et licence `Apache-2.0` assortie d'un fichier `NOTICE` de non-revendication.
 > - **À livrer dans les dépôts aval (Phases 2 à 4, §13) :** Worker portail `MCP-Acces` et base D1
 >   partagée `mcp-identite` (Phase 2), branchement multilocataire + double monture `/mcp` &
 >   `/mcp/oauth` + BYOK strict dans `MCP-Legislation` et `MCP-Jurisprudence` (Phase 3), puis
@@ -97,7 +97,7 @@ Enterprise et sous la limite stricte de `<= 64` caractères d'identifiant compos
 | S20 | Toute documentation publique de gouverne et de conformité (`/conformite`, `/gouverne`) **dérive des constantes du code** (`QUOTAS_ACTIF_PAR_DEFAUT`, `QUOTAS_LIMITE_PAR_DEFAUT`, `RETENTION_EVENEMENTS_JOURS`). | Élimine toute dérive silencieuse entre le code exécuté et les engagements publiés aux confrères. |
 | S21 | **Portail dédié `MCP-Acces` (`https://acces.poirierlavoie.ca`)** et **Cloudflare Email Sending** (`noreply@acces.poirierlavoie.ca` via liaison `send_email`). | **NOUVELLE (2026-11-18).** Isole les sessions HTML, liens magiques, formulaires `/demande` et `/moi`, console `/exploitant`, flux OAuth 2.1 et envois courriel hors des Workers MCP JSON-RPC sans état. |
 | S22 | **Hygiène Deep Research et garde `SAFETY-KERNEL`.** Descripteurs fermés (`additionalProperties: false`), annotations exactes (`readOnlyHint: true`, `idempotentHint: true`, `destructiveHint: false`, `openWorldHint: false` sur tous les outils hors ligne), WAF de zone ouvert aux rafales `POST /mcp*` authentifiées, et préambule `SAFETY-KERNEL` obligatoire pour les appels autonomes de l'API Gemini Deep Research (`store=True`). | **NOUVELLE (2026-11-18).** Empêche les boucles de recherche autonome de se bloquer sur des invites d'approbation d'écriture, d'être coupées par le WAF Cloudflare de `poirierlavoie.ca`, ou de divulguer des faits clients vers la recherche web ouverte des planificateurs autonomes. |
-| S23 | **Licence `CC-BY-NC-SA-4.0` + Autorisation complémentaire de pratique professionnelle du droit** dans `LICENSE` et `/cgu`. | **NOUVELLE (2026-11-18).** Conserve l'identifiant SPDX uniforme `CC-BY-NC-SA-4.0` sur tous les dépôts tout en levant explicitement (au titre des sections 6(c) et 7(b) CC) toute ambiguïté sur l'usage rémunéré en dossier client par les avocats en règle du Barreau du Québec, sans autoriser la revente commerciale LegalTech/SaaS, avec clauses « tel quel », zéro SLA et divulgation du statut d'avocat plaideur de l'exploitant. |
+| S23 | **Licence `Apache-2.0` + `NOTICE`** dans chaque dépôt et conditions du service hébergé sur `/cgu`. | **AMENDÉE.** Le code source et les manifestes de la suite sont publiés gratuitement sous licence open source `Apache-2.0` (`LICENSE`) avec un fichier `NOTICE` documentant la création assistée par IA et la non-revendication / le respect des sources tierces (dont `CC BY-NC-SA 4.0` REQ/OQLF et CanLII BYOK), tandis que `/cgu` encadre l'usage du service hébergé, les clauses « tel quel », zéro SLA et la divulgation du statut d'avocat plaideur de l'exploitant. |
 
 ---
 
@@ -140,7 +140,8 @@ MCP-Socle/
 ├── scripts/
 │   └── verifier-audit.mjs    contrôle 0 vulnérabilité prod + parité bidirectionnelle osv-scanner.toml
 ├── test/                     suite Vitest hors ligne exécutée dans workerd (Miniflare)
-├── LICENSE                   CC-BY-NC-SA-4.0 + autorisation complémentaire de pratique professionnelle
+├── LICENSE                   Apache-2.0 (texte officiel)
+├── NOTICE                    Création assistée par IA, portée et non-revendication
 ├── osv-scanner.toml          registre daté et motivé des exemptions OSV de devDependencies
 └── package.json              "type": "module", version 0.8.3, zéro dépendance d'exécution
 ```

@@ -1,0 +1,41 @@
+MCP-Socle (@poirierlavoie/mcp-socle)
+Copyright 2026 Jason Poirier Lavoie
+
+Ce logiciel et sa documentation originale sont publiés sous la licence Apache,
+version 2.0 (identifiant SPDX : Apache-2.0 ; voir LICENSE).
+This software and its original documentation are licensed under the Apache
+License, Version 2.0 (SPDX Identifier: Apache-2.0; see LICENSE).
+
+================================================================================
+1. CRÉATION ASSISTÉE PAR IA ET VOCATION D'INTÉRÊT PUBLIC /
+   AI-ASSISTED CREATION & PUBLIC-BENEFIT DEDICATION
+================================================================================
+
+FRANÇAIS — Cette bibliothèque sans état (protocole MCP Streamable HTTP,
+primitives d'identité, OAuth 2.1, chiffrement de coffre et gouverne) a été
+élaborée en grande partie avec l'assistance de systèmes d'intelligence
+artificielle et est mise gratuitement à la disposition du public pour l'intérêt
+général.
+
+ENGLISH — This stateless library (Streamable HTTP MCP protocol, identity,
+OAuth 2.1, vault encryption, and governance primitives) was built with
+substantial assistance from artificial intelligence systems and is released
+free of charge for the public benefit.
+
+================================================================================
+2. PORTÉE DE LA LICENCE, FOURNITURE « TEL QUEL » ET ABSENCE D'AVAL /
+   LICENSE SCOPE, "AS IS" PROVISION & NON-ENDORSEMENT
+================================================================================
+
+FRANÇAIS — La licence Apache-2.0 s'applique exclusivement au code source et à
+la documentation originale de ce dépôt. Aucun droit d'auteur ni statut officiel
+n'est revendiqué sur les données ou sources tierces éventuellement desservies
+par les services consommateurs. Conformément aux sections 6, 7 et 8 d'Apache-2.0,
+ce logiciel est fourni « TEL QUEL », sans garantie ni engagement de niveau de
+service, et sans droit d'aval au nom de l'auteur.
+
+ENGLISH — The Apache-2.0 license applies solely to the source code and original
+documentation in this repository. No copyright or official status is claimed
+over any third-party data or sources served by downstream consumers. Pursuant
+to Sections 6, 7, and 8 of Apache-2.0, this software is provided "AS IS", with
+zero warranty or SLA, and grants no right of endorsement in the author's name.
