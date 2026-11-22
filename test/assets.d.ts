@@ -18,6 +18,11 @@ declare module "*LICENSE?raw" {
   export default contenu;
 }
 
+declare module "*NOTICE?raw" {
+  const contenu: string;
+  export default contenu;
+}
+
 declare module "*.toml?raw" {
   const contenu: string;
   export default contenu;

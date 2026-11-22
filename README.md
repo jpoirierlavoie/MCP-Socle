@@ -39,7 +39,8 @@ Les tests s'exécutent hors ligne dans `workerd` (`@cloudflare/vitest-plugin`) a
 | [`CLAUDE.md`](CLAUDE.md) | consignes de travail, architecture à trois couches et invariants de ce dépôt |
 | [`GEMINI.md`](GEMINI.md) | guide de contexte identique octet pour octet à `CLAUDE.md` (< 24 Kio) |
 | [`SECURITY.md`](SECURITY.md) | politique de divulgation coordonnée (sécurité, confidentialité et secret professionnel) et propriétés de sécurité |
-| [`LICENSE`](LICENSE) | licence Creative Commons `CC-BY-NC-SA-4.0` + autorisation complémentaire de pratique professionnelle du droit |
+| [`LICENSE`](LICENSE) | licence open source `Apache-2.0` |
+| [`NOTICE`](NOTICE) | mention de création assistée par IA, portée de la licence et non-revendication |
 | [`SPEC-SOCLE-COMMUN.md`](SPEC-SOCLE-COMMUN.md) | architecture directrice : ouverture multilocataire, portail `MCP-Acces`, double monture `/mcp` + `/mcp/oauth` et compatibilité Deep Research Claude & Gemini |
 | [`src/identite/LISEZ-MOI.md`](src/identite/LISEZ-MOI.md) | inventaire de `identite/` (`porteur.ts`, `refus.ts`, `titulaire.ts`, `coffre.ts`, `oauth.ts`, `gouverne.ts`) |
 | [`src/protocole/LISEZ-MOI.md`](src/protocole/LISEZ-MOI.md) | inventaire de `protocole/` (`rpc.ts`, `valide.ts`, `registre.ts`, `versions.ts`, `entetes.ts`, `meta.ts`, `decouverte.ts`, `http.ts`, `serveur.ts`) |
