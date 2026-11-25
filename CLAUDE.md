@@ -6,16 +6,15 @@ Socle commun d'infrastructure logicielle partagée pour les serveurs MCP et le p
 
 ## 1. Rôle architectural et intégration dans le cadre global
 
-Le cadre `droit-civil-quebecois` (`v2.0.2`, anciennement `pratique-civile-quebecoise`) repose sur une architecture découplée en trois couches complétée par le portail d'admission et d'autorisation `MCP-Acces` :
+Le cadre `droit-civil-quebecois` (`v3.1.1`, anciennement `pratique-civile-quebecoise`) repose sur une architecture découplée en trois couches complétée par le portail d'admission et d'autorisation `MCP-Acces` :
 
 ```
              ┌────────────────────────────────────────────────────────┐
-             │      droit-civil-quebecois (Plugin Cadre v2.0.2)       │
-             │  5 compétences : recherche, analyse, rédaction,        │
-             │  administration-litige, déontologie-et-pratique        │
+             │      droit-civil-quebecois (Plugin Cadre v3.1.1)       │
+             │   10 compétences · 59 feuilles · 4 scripts stdlib      │
              └──────┬───────────────────────┬──────────────────┬──────┘
                     │                       │                  │
-        (serveur `lois`, 10 outils)  (serveur `juris`, 10)  (serveur `outils`, 12)
+        (serveur `lois`, 10 outils)  (serveur `juris`, 12)  (serveur `outils`, 15)
                     │                       │                  │
                     ▼                       ▼                  ▼
          ┌─────────────────────┐ ┌─────────────────────┐ ┌──────────────────────────┐
@@ -81,7 +80,7 @@ Le code source est strictement partitionné en deux sous-systèmes réexportés 
 
 Toute modification d'interfaces, de transport, d'authentification ou de version dans le socle ou ses Workers aval doit maintenir la cohérence du greffon cadre `droit-civil-quebecois` :
 1. **Manifestes clients** : `.mcp.json`, `mcp_config.json`, `gemini-extension.json`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, `plugin.json`.
-2. **Compétences sous `skills/`** : `recherche-juridique`, `analyse-juridique`, `redaction-juridique`, `administration-litige`, `deontologie-et-pratique` (noyau `SAFETY-KERNEL` identique au bit près).
+2. **Compétences sous `skills/`** : 5 orchestrateurs `phase-*` et 5 services (`recherche-juridique`, `analyse-et-strategie`, `redaction-juridique`, `production-et-conformite`, `gestion-du-mandat`, noyau `SAFETY-KERNEL` identique au bit près).
 3. **Scripts de synchronisation et validation** :
    - `python verifier.py`
    - `python evals/executer_evals.py --auto-test`

@@ -3,7 +3,7 @@
 Code d'infrastructure partagé par les connecteurs MCP authentifiés et le portail d'accès de Poirier Lavoie avocat :
 
 - [`MCP-Legislation`](https://github.com/jpoirierlavoie/MCP-Legislation) — Législation du Québec et du Canada (`lois`, 10 outils)
-- [`MCP-Jurisprudence`](https://github.com/jpoirierlavoie/MCP-Jurisprudence) — Jurisprudence canadienne, collection CanLII (`juris`, 10 outils)
+- [`MCP-Jurisprudence`](https://github.com/jpoirierlavoie/MCP-Jurisprudence) — Jurisprudence canadienne, collection CanLII (`juris`, 12 outils)
 - `MCP-Acces` (`acces.poirierlavoie.ca`) — Portail d'admission des membres du Barreau du Québec, gestion des jetons/coffres et serveur d'autorisation OAuth 2.1
 
 Le socle porte le **protocole** (JSON-RPC 2.0, transport Streamable HTTP sans état, négociation de versions, en-têtes `2026-07-28`, fiche SEP-2127 `/mcp/server-card`, validateur JSON Schema fermé par défaut et répartiteur unifié) et l'**identité / gouverne** (extraction et comparaison SHA-256 à temps constant des porteurs, résolution multilocataire sur D1 `titulaire`/`jeton` avec portées, coffre chiffré par enveloppe `HKDF-SHA256` + `AES-256-GCM`, découverte OAuth 2.1 RFC 9728 / RFC 8414 + PKCE `S256` + validation CIMD anti-SSRF, limitation de débit à deux étages adaptée aux rafales Deep Research et télémétrie technique sans contenu). Il ne porte aucune connaissance du droit : celle-ci reste dans les connecteurs.
