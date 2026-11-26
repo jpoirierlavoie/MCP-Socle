@@ -26,6 +26,7 @@ export const URIS_REDIRECTION_GOOGLE_CONNUES = [
   "https://vertexaisearch.cloud.google.com/oauth-redirect",
   "https://vertexaisearch.cloud.google.com/console/oauth/default_oauth.html",
   "https://antigravity.google/oauth-callback",
+  "https://antigravity.google.com/oauth/callback",
 ] as const;
 
 /** URI de rappel stable OpenAI / ChatGPT lorsque RFC 9207 `iss` est annoncé. */

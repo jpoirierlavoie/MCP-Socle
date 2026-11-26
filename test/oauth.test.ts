@@ -193,6 +193,11 @@ describe("G36 — Validation des redirect_uri, CIMD anti-SSRF et normalisation d
         urisExactesAutorisees: urisAutorisees,
       }),
     ).toBe(true);
+    expect(
+      estUriRedirectionAutorisee("https://antigravity.google.com/oauth/callback", {
+        urisExactesAutorisees: urisAutorisees,
+      }),
+    ).toBe(true);
 
     // Boucle locale désactivée par défaut :
     expect(estUriRedirectionAutorisee("http://127.0.0.1:54321/callback")).toBe(false);

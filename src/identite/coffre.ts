@@ -397,7 +397,8 @@ const MOTIF_BEARER = /(\bBearer\s+)[^\s,;|"'<>]+/gi;
 const MOTIF_ENTETE_SENSIBLE =
   /(\b(?:x-(?:clef|api-key)[A-Za-z0-9-]*|authorization)\s*:\s*)(?!Bearer\b|\[EXPURGE\])[^\r\n,;|"']+/gi;
 const MOTIF_SEGMENT_OAUTH_MCP = /(\/mcp\/oauth\/)[^/?#\s"']+/gi;
-const MOTIF_SEGMENT_MCP = /(\/mcp\/)(?!(?:server-card|oauth)(?:[/?#\s"']|$))[^/?#\s"']+/gi;
+const MOTIF_SEGMENT_MCP =
+  /(\/mcp\/)(?!(?:server-card(?:\.json)?|oauth)(?:[/?#\s"']|$))[^/?#\s"']+/gi;
 
 function expurgerParamsUrl(texte: string): string {
   return texte.replace(MOTIF_PARAM_URL, (correspondance, prefixe: string, nomBrut: string) => {

@@ -14,7 +14,7 @@ En **dépendance de développement**, par étiquette git immuable, et empaqueté
 
 ```jsonc
 "devDependencies": {
-  "@poirierlavoie/mcp-socle": "github:jpoirierlavoie/MCP-Socle#v0.8.5"
+  "@poirierlavoie/mcp-socle": "github:jpoirierlavoie/MCP-Socle#v0.8.6"
 }
 ```
 
@@ -46,9 +46,9 @@ Les tests s'exécutent hors ligne dans `workerd` (`@cloudflare/vitest-plugin`) a
 | [`src/protocole/LISEZ-MOI.md`](src/protocole/LISEZ-MOI.md) | inventaire de `protocole/` (`rpc.ts`, `valide.ts`, `registre.ts`, `versions.ts`, `entetes.ts`, `meta.ts`, `decouverte.ts`, `http.ts`, `serveur.ts`) |
 | [`docs/archive/`](docs/archive/) | documents historiques d'ouverture et de planification (`NOTE-OUVERTURE-PUBLIQUE.md`, `FEUILLE-DE-ROUTE.md`, `PROCEDURES-MANUELLES.md`) |
 
-## État (`v0.8.5` — Origines OpenAI/ChatGPT, SEP-3149 CIMD, RFC 9207 `iss`, licence Apache-2.0 et alignement documentaire)
+## État (`v0.8.6` — Callback OAuth Antigravity, alias SEP-2127 `/.well-known/mcp/server-card.json` et point distant `/mcp/oauth`)
 
-- **Protocole ([`src/protocole/LISEZ-MOI.md`](src/protocole/LISEZ-MOI.md)) :** enveloppe JSON-RPC 2.0, validateur JSON Schema fermé par défaut, registre et exécution des outils, négociation de versions et validation UTF-8 des en-têtes `2026-07-28`, fiche de découverte `/mcp/server-card`, origines CORS (Claude, Gemini et ChatGPT/OpenAI), lecture bornée `64 Kio` et répartiteur HTTP sans état.
+- **Protocole ([`src/protocole/LISEZ-MOI.md`](src/protocole/LISEZ-MOI.md)) :** enveloppe JSON-RPC 2.0, validateur JSON Schema fermé par défaut, registre et exécution des outils, négociation de versions et validation UTF-8 des en-têtes `2026-07-28`, fiche de découverte `/mcp/server-card` et `/.well-known/mcp/server-card.json`, origines CORS (Claude, Gemini et ChatGPT/OpenAI), lecture bornée `64 Kio` et répartiteur HTTP sans état.
 - **Identité, coffre, OAuth 2.1 et gouverne ([`src/identite/LISEZ-MOI.md`](src/identite/LISEZ-MOI.md)) :**
   - Extraction et comparaison SHA-256 à temps constant des jetons (`Bearer`, `?key=` optionnel, `/mcp/<jeton>`), avec refus uniforme `404` sur `/mcp` et `401` (`WWW-Authenticate` RFC 9728) sur `/mcp/oauth` (`Cache-Control: no-store`).
   - Résolution multilocataire sur base D1 (`titulaire` / `jeton`) avec portées par service et coffre chiffré (`HKDF-SHA256` + `AES-256-GCM`) pour les clés CanLII personnelles.

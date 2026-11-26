@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  CHEMIN_WELL_KNOWN_CARTE_SERVEUR,
   construireCarteServeur,
   repondreCarteServeur,
   resultatDecouverte,
@@ -358,7 +359,9 @@ describe("fiche SEP-2127 (server card)", () => {
       remoteUrl: "https://exemple.test/mcp",
       supportedProtocolVersions: SERVIES,
     });
+    expect(CHEMIN_WELL_KNOWN_CARTE_SERVEUR).toBe("/.well-known/mcp/server-card.json");
     expect(carte.$schema).toBe(SERVER_CARD_SCHEMA);
+    expect(carte.remotes).toHaveLength(1);
     expect(carte.remotes[0]!.supportedProtocolVersions).toEqual(SERVIES);
 
     const opt = repondreCarteServeur("OPTIONS", carte);
@@ -378,5 +381,25 @@ describe("fiche SEP-2127 (server card)", () => {
     const post = repondreCarteServeur("POST", carte);
     expect(post.status).toBe(405);
     expect(post.headers.get("Allow")).toBe("GET, HEAD, OPTIONS");
+
+    const carteAvecOAuth = construireCarteServeur({
+      name: "ca.exemple/test",
+      title: "Serveur Test",
+      version: "0.8.6",
+      description: "Description publique.",
+      websiteUrl: "https://exemple.test/",
+      repositoryUrl: "https://github.com/exemple/test",
+      remoteUrl: "https://exemple.test/mcp",
+      oauthRemoteUrl: "https://exemple.test/mcp/oauth",
+      supportedProtocolVersions: SERVIES,
+    });
+    expect(carteAvecOAuth.remotes).toHaveLength(2);
+    expect(carteAvecOAuth.remotes[0]!.url).toBe("https://exemple.test/mcp");
+    expect(carteAvecOAuth.remotes[1]).toEqual({
+      type: "streamable-http",
+      url: "https://exemple.test/mcp/oauth",
+      supportedProtocolVersions: SERVIES,
+      headers: [],
+    });
   });
 });
