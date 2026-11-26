@@ -389,6 +389,7 @@ describe("empreinteCoffre, repereCoffre à clé maître et expurger (G9)", () =>
       `POST https://exemple.test/mcp/${jetonPrefixeOAuth}`,
       "POST https://exemple.test/mcp/oauth/JETON_COLLE_PAR_ERREUR",
       "GET https://exemple.test/mcp/server-card",
+      "GET https://exemple.test/.well-known/mcp/server-card.json",
       "POST https://exemple.test/mcp/oauth",
       `Authorization: Bearer ${jeton}`,
       "Authorization: Bearer secret%2Favec%2Bpourcent",
@@ -410,6 +411,7 @@ describe("empreinteCoffre, repereCoffre à clé maître et expurger (G9)", () =>
     expect(propre).not.toContain(secretExterne);
     expect(propre).not.toContain(encodeURIComponent(secretExterne));
     expect(propre).toContain("/mcp/server-card");
+    expect(propre).toContain("/.well-known/mcp/server-card.json");
     expect(propre).toContain("/mcp/oauth |");
 
     // Corps x-www-form-urlencoded débutant directement par un paramètre sensible (sans ? ni &) :

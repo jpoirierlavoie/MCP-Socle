@@ -20,6 +20,8 @@ export interface IdentiteServeur {
 export const SERVER_CARD_SCHEMA =
   "https://static.modelcontextprotocol.io/schemas/v1/server-card.schema.json";
 
+export const CHEMIN_WELL_KNOWN_CARTE_SERVEUR = "/.well-known/mcp/server-card.json";
+
 export const SERVER_CARD_CONTENT_TYPE = "application/mcp-server-card+json; charset=utf-8";
 
 export interface EnteteCarteServeur {
@@ -46,6 +48,8 @@ export interface OptionsCarteServeur {
   repositoryUrl: string;
   remoteUrl: string;
   supportedProtocolVersions: readonly string[];
+  /** Point d'entrée OAuth 2.1 optionnel sans en-tête statique requis (`headers: []`). */
+  oauthRemoteUrl?: string;
   /** Description de l'en-tête `Authorization` annoncée aux catalogues. */
   authDescription?: string;
 }
@@ -89,6 +93,16 @@ export function construireCarteServeur(o: OptionsCarteServeur): CarteServeur {
           },
         ],
       },
+      ...(o.oauthRemoteUrl
+        ? [
+            {
+              type: "streamable-http" as const,
+              url: o.oauthRemoteUrl,
+              supportedProtocolVersions: [...o.supportedProtocolVersions],
+              headers: [],
+            },
+          ]
+        : []),
     ],
   };
 }

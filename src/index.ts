@@ -188,6 +188,7 @@ export {
 } from "./identite/titulaire";
 export {
   type CarteServeur,
+  CHEMIN_WELL_KNOWN_CARTE_SERVEUR,
   construireCarteServeur,
   type EnteteCarteServeur,
   type IdentiteServeur,
