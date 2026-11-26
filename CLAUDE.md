@@ -6,13 +6,13 @@ Socle commun d'infrastructure logicielle partagée pour les serveurs MCP et le p
 
 ## 1. Rôle architectural et intégration dans le cadre global
 
-Le cadre `droit-civil-quebecois` (`v3.1.1`, anciennement `pratique-civile-quebecoise`) repose sur une architecture découplée en trois couches complétée par le portail d'admission et d'autorisation `MCP-Acces` :
+Le cadre `droit-civil-quebecois` (`v3.3.1`, anciennement `pratique-civile-quebecoise`) repose sur une architecture découplée en trois couches complétée par le portail d'admission et d'autorisation `MCP-Acces` :
 
 ```
-             ┌────────────────────────────────────────────────────────┐
-             │      droit-civil-quebecois (Plugin Cadre v3.1.1)       │
-             │   10 compétences · 59 feuilles · 4 scripts stdlib      │
-             └──────┬───────────────────────┬──────────────────┬──────┘
+          ┌──────────────────────────────────────────────────────────────┐
+          │         droit-civil-quebecois (Plugin Cadre v3.3.1)          │
+          │ 10 compétences · 60 feuilles · 6 personas · 4 scripts stdlib │
+          └─────────┬───────────────────────┬──────────────────┬─────────┘
                     │                       │                  │
         (serveur `lois`, 10 outils)  (serveur `juris`, 12)  (serveur `outils`, 15)
                     │                       │                  │
@@ -33,7 +33,7 @@ Le cadre `droit-civil-quebecois` (`v3.1.1`, anciennement `pratique-civile-quebec
                     │    └──────────────┘          │ /demande /moi OAuth│
                     │                              └────────┬───────────┘
                     └───────────┬───────────────────────────┘
-                                ▼ (dépendance de dev `#v0.8.4`, zéro runtime dep)
+                                ▼ (dépendance de dev `#v0.8.5`, zéro runtime dep)
                  ┌─────────────────────────────┐
                  │          MCP-Socle          │
                  │  Transport JSON-RPC 2.0     │
@@ -46,11 +46,11 @@ Le cadre `droit-civil-quebecois` (`v3.1.1`, anciennement `pratique-civile-quebec
 
 ### Place du socle dans l'écosystème
 - **Bibliothèque d'infrastructure partagée (`@poirierlavoie/mcp-socle`)** : Fournit le transport MCP Streamable HTTP sans état (`2026-07-28` et versions compatibles), l'enveloppe JSON-RPC 2.0, l'authentification cryptographique par porteur partagé et par jeton individuel D1 (`titulaire`/`jeton` avec portées), le coffre chiffré par enveloppe (`HKDF-SHA256` + `AES-256-GCM`), les primitives OAuth 2.1 / RFC 9728 / RFC 8414 / PKCE `S256` / validation CIMD anti-SSRF, la limitation de débit à deux étages adaptée aux rafales Deep Research, la télémétrie technique sans contenu et la fiche SEP-2127 (`/mcp/server-card`).
-- **Consommateurs directs** : `MCP-Legislation`, `MCP-Jurisprudence` et `MCP-Acces`. Ils intègrent le socle via `devDependencies` (`github:jpoirierlavoie/MCP-Socle#v0.8.4`). Le code du socle est empaqueté à la compilation par `esbuild` / Wrangler.
+- **Consommateurs directs** : `MCP-Legislation`, `MCP-Jurisprudence` et `MCP-Acces`. Ils intègrent le socle via `devDependencies` (`github:jpoirierlavoie/MCP-Socle#v0.8.5`). Le code du socle est empaqueté à la compilation par `esbuild` / Wrangler.
 - **Indépendance de `MCP-Outils`** : Le troisième serveur MCP (`MCP-Outils`, alias `outils`) est public, sans état et sans authentification ; il ne dépend pas du socle.
 - **Surfaces clientes et modes Deep Research pris en charge** :
-  - Clients à jeton direct sur `/mcp` (refus uniforme `404` à corps vide) : Claude Code, Claude Desktop, Google Antigravity, Gemini CLI, connecteur `claude.ai` (`?key=`), et agents **Gemini API Deep Research** (`deep-research-preview-04-2026`, `deep-research-max-preview-04-2026`).
-  - Clients OAuth 2.1 sur `/mcp/oauth` (refus `401` + `WWW-Authenticate: Bearer resource_metadata="..."` selon RFC 9728) : **Gemini App** (`gemini.google.com`), **Gemini Enterprise** (Vertex AI) et connecteurs OAuth multilocataires **Claude Research** (`claude.ai`).
+  - Clients OAuth 2.1 sur `/mcp/oauth` par défaut (refus `401` + `WWW-Authenticate: Bearer resource_metadata="..."` selon RFC 9728) : **Claude Code**, **Claude Desktop**, **Google Antigravity**, **Gemini CLI**, **ChatGPT Web/Desktop**, **OpenAI Codex**, **Gemini App** (`gemini.google.com`), **Gemini Enterprise** (Vertex AI) et connecteurs OAuth multilocataires **`claude.ai` / Claude Research**.
+  - Clients à jeton direct sur `/mcp` (refus uniforme `404` à corps vide) : scripts CLI/CI sans navigateur (`Authorization: Bearer`), repli `?key=` (`claude.ai`), **API OpenAI Responses**, et agents **Gemini API Deep Research** (`deep-research-preview-04-2026`, `deep-research-max-preview-04-2026`).
 
 ---
 
@@ -79,8 +79,8 @@ Le code source est strictement partitionné en deux sous-systèmes réexportés 
 ## 4. Surfaces de synchronisation du greffon cadre (`droit-civil-quebecois`)
 
 Toute modification d'interfaces, de transport, d'authentification ou de version dans le socle ou ses Workers aval doit maintenir la cohérence du greffon cadre `droit-civil-quebecois` :
-1. **Manifestes clients** : `.mcp.json`, `mcp_config.json`, `gemini-extension.json`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, `plugin.json`.
-2. **Compétences sous `skills/`** : 5 orchestrateurs `phase-*` et 5 services (`recherche-juridique`, `analyse-et-strategie`, `redaction-juridique`, `production-et-conformite`, `gestion-du-mandat`, noyau `SAFETY-KERNEL` identique au bit près).
+1. **Manifestes clients et places de marché (9)** : `.mcp.json`, `mcp_config.json`, `gemini-extension.json`, `.antigravity-plugin/plugin.json`, `plugin.json`, `.codex-plugin/plugin.json`, `.agents/plugins/marketplace.json`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`.
+2. **Compétences (`skills/`) et personas (`agents/`)** : 5 orchestrateurs `phase-*`, 5 services (`recherche-juridique`, `analyse-et-strategie`, `redaction-juridique`, `production-et-conformite`, `gestion-du-mandat`, 60 feuilles, noyau `SAFETY-KERNEL` identique au bit près) et 6 personas de contre-épreuve (`agents/*.md`).
 3. **Scripts de synchronisation et validation** :
    - `python verifier.py`
    - `python evals/executer_evals.py --auto-test`
@@ -92,7 +92,7 @@ Toute modification d'interfaces, de transport, d'authentification ou de version 
 ## 5. Invariants critiques et règles anti-dérive
 
 1. **Zéro dépendance d'exécution** : `package.json` ne doit comporter aucune section `dependencies`. Tout le code de production réside dans `src/` sur les API Web Standards de Cloudflare Workers.
-2. **Consommation par étiquette git immuable** : Le socle est consommé par tag semver immuable (`#v0.8.4`). Interdiction absolue de `git push --force` ou de réécriture d'étiquette publiée. Toute évolution de contrat impose une incrémentation de version.
+2. **Consommation par étiquette git immuable** : Le socle est consommé par tag semver immuable (`#v0.8.5`). Interdiction absolue de `git push --force` ou de réécriture d'étiquette publiée. Toute évolution de contrat impose une incrémentation de version.
 3. **`queryKey` optionnel dans `Porte`** : L'acceptation de `?key=` reste un choix explicite sur `/mcp`, tandis que `/mcp/oauth` n'accepte que `Authorization: Bearer` conformément à OAuth 2.1.
 4. **Fermé par défaut, sans exception** :
    - Authentification et D1 : aucune défaillance de configuration ou de lecture ne doit ouvrir un point d'accès (`G21`).
@@ -103,7 +103,7 @@ Toute modification d'interfaces, de transport, d'authentification ou de version 
 6. **Intégrité des tests de garde** : Lorsqu'un test de garde échoue, on rétablit la garantie dans le code ; on n'abaisse jamais l'exigence du test.
 7. **Discipline documentaire multi-dépôts** :
    - `GEMINI.md` et `CLAUDE.md` sont identiques octet pour octet sous le plafond de 24 000 octets UTF-8 (> 1 000 octets).
-   - Doivent obligatoirement mentionner `# MCP-Socle` et l'étiquette courante `#v0.8.4`.
+   - Doivent obligatoirement mentionner `# MCP-Socle` et l'étiquette courante `#v0.8.5`.
    - Proscription absolue de toute référence aux anciens identifiants de dépôts retirés.
 8. **Zéro journalisation de contenu** : Ni le socle ni les Workers consommateurs n'enregistrent le texte des requêtes (`search_log` et `forme_requete` interdites par `verifierSchemaSansContenuIdentifiant`).
 9. **Secrets locaux** : Ne jamais lire, consigner, journaliser ni committer de secrets (`cf.token`, `*.token`, `.dev.vars`, `mcp.url`, `.env*`).
@@ -130,6 +130,6 @@ npm.cmd run audit         # 0 vulnérabilité d'exécution + parité stricte osv
 | # | Axe d'impact | Éléments à inspecter | Ce qui impose une action |
 |---|---|---|---|
 | 1 | **Code, contrats et gardes (`src/`, `SPEC`, `test/`)** | `src/identite/`, `src/protocole/`, `src/index.ts`, `SPEC-SOCLE-COMMUN.md`, `test/` (`workerd`), `test/doc.test.ts` | Toute évolution d'API, de coffre, d'OAuth 2.1, de quotas/débit, de validation JSON Schema, d'en-têtes MCP, de porteurs ou de refus (`404`/`401`/`403`/`429`) |
-| 2 | **`README.md` et gouvernance du dépôt** | `README.md`, `src/identite/LISEZ-MOI.md`, `src/protocole/LISEZ-MOI.md`, `SECURITY.md`, `LICENSE` (`Apache-2.0`), `NOTICE`, `package.json`, `CLAUDE.md`, `GEMINI.md` | Tout changement de version (`#v0.8.4`), de module, de propriété de sécurité/confidentialité, de licence ou d'étiquette |
+| 2 | **`README.md` et gouvernance du dépôt** | `README.md`, `src/identite/LISEZ-MOI.md`, `src/protocole/LISEZ-MOI.md`, `SECURITY.md`, `LICENSE` (`Apache-2.0`), `NOTICE`, `package.json`, `CLAUDE.md`, `GEMINI.md` | Tout changement de version (`#v0.8.5`), de module, de propriété de sécurité/confidentialité, de licence ou d'étiquette |
 | 3 | **Page publique HTML (`GET /`) et découverte SEP-2127 / RFC 9728** | `construireCarteServeur`, `repondreCarteServeur` (`/mcp/server-card`), `construireRessourceProtegee` (`/.well-known/oauth-protected-resource`) ; sections `#acces` des pages `GET /` de `MCP-Legislation`, `MCP-Jurisprudence` et pages publiques de `MCP-Acces` | Tout changement touchant les porteurs, la double monture `/mcp` + `/mcp/oauth`, les statuts de refus, CORS, SEP-2127 ou RFC 9728 oblige à vérifier la prose HTML publique des Workers aval |
 | 4 | **Impacts inter-dépôts (`Cross-repository`)** | **`MCP-Acces`** (`acces.poirierlavoie.ca`), **`MCP-Legislation`**, **`MCP-Jurisprudence`**, **`MCP-Outils`** et **`droit-civil-quebecois`** (`verifier.py`, `verifier_tout.py`, `synchroniser_plugin_gemini.py`) | Avant publication et consommation d'un nouveau tag semver, vérifier l'ordre de déploiement inter-dépôts (Phases 1 -> 2 -> 3 -> 4), les `README.md` et les suites de tests |

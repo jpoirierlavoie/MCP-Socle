@@ -4,12 +4,12 @@
 > gouverne quatre dépôts d'infrastructure — `MCP-Socle`, `MCP-Acces` (`acces.poirierlavoie.ca`),
 > `MCP-Legislation` (`legislation.poirierlavoie.ca`, alias `lois`) et `MCP-Jurisprudence`
 > (`jurisprudence.poirierlavoie.ca`, alias `juris`) — en cohérence avec `MCP-Outils`
-> (`outils.poirierlavoie.ca`, alias `outils`) et le greffon cadre `droit-civil-quebecois` (`v2.0.2`).
+> (`outils.poirierlavoie.ca`, alias `outils`) et le greffon cadre `droit-civil-quebecois` (`v3.3.1`).
 > Les considérations historiques initiales sont archivées dans `docs/archive/NOTE-OUVERTURE-PUBLIQUE.md`.
 > Ici figurent les contrats exécutoires.
 >
-> **Statut d'implémentation (`@poirierlavoie/mcp-socle` `v0.8.4` — Phase 1 livrée le 2026-11-18, `no-store` en `v0.8.1`, durcissement de validation en `v0.8.2`, boucles locales élargies et RFC 7591 DCR sans état en `v0.8.3`, origines OpenAI/SEP-3149/RFC 9207 et Apache-2.0 en `v0.8.4`) :**
-> - **Livré dans `MCP-Socle` (`v0.8.4`) :** transport MCP `Streamable HTTP` sans état (`2026-07-28`,
+> **Statut d'implémentation (`@poirierlavoie/mcp-socle` `v0.8.5` — Phase 1 livrée le 2026-11-18, `no-store` en `v0.8.1`, durcissement de validation en `v0.8.2`, boucles locales élargies et RFC 7591 DCR sans état en `v0.8.3`, origines OpenAI/SEP-3149/RFC 9207 et Apache-2.0 en `v0.8.4`, alignement documentaire et parité multi-dépôts en `v0.8.5`) :**
+> - **Livré dans `MCP-Socle` (`v0.8.5`) :** transport MCP `Streamable HTTP` sans état (`2026-07-28`,
 >   `2025-11-25`, `2025-06-18`, `2025-03-26`), porteurs à temps constant (`Bearer`, `?key=`,
 >   `/mcp/<jeton>`, `lirePorteurEntete` / `porteurEntete`), résolution multilocataire D1 (`titulaire` / `jeton` avec
 >   portée unifiée `les_deux` ou par connecteur), coffre chiffré par enveloppe (`HKDF-SHA256` +
@@ -20,11 +20,11 @@
 >   authentifié + débit par `titulaire_id` + quotas journaliers par classe), télémétrie technique
 >   sans contenu (minute UTC, rétention 90 jours, garde SQL `verifierSchemaSansContenuIdentifiant`)
 >   et licence `Apache-2.0` assortie d'un fichier `NOTICE` de non-revendication.
-> - **À livrer dans les dépôts aval (Phases 2 à 4, §13) :** Worker portail `MCP-Acces` et base D1
->   partagée `mcp-identite` (Phase 2), branchement multilocataire + double monture `/mcp` &
->   `/mcp/oauth` + BYOK strict dans `MCP-Legislation` et `MCP-Jurisprudence` (Phase 3), puis
->   alignement documentaire et validation E2E en direct dans `droit-civil-quebecois` et
->   `MCP-Outils` (Phase 4).
+> - **Livré dans les dépôts aval (Phases 2 à 4, §13) :** Worker portail `MCP-Acces` et base D1
+>   partagée `mcp-identite` (Phase 2 — livrée), branchement multilocataire + double monture `/mcp` &
+>   `/mcp/oauth` + BYOK strict dans `MCP-Legislation` et `MCP-Jurisprudence` (Phase 3 — livrée),
+>   puis alignement documentaire et validation E2E en direct dans `droit-civil-quebecois`
+>   (`v3.3.1`) et `MCP-Outils` (Phase 4 — livrée).
 >
 > **Paramètres arrêtés.** Service gratuit réservé exclusivement aux membres actifs en règle du
 > Barreau du Québec. Admission par demande préalable avec vérification automatisée du courriel,
@@ -39,7 +39,7 @@
 > vérifie contre le disque avant usage (leçon du 2026-09-18 où cinq lignes non datées avaient
 > dérivé en silence).
 
-### 0.1 État technique comparé des Workers MCP avant bascule aval (Phase 3)
+### 0.1 Référence historique — État technique comparé des Workers MCP avant bascule aval (base pré-Phase 3, relevé du 2026-11-18)
 
 | Dimension | `MCP-Legislation` (`lois`, 10 outils) | `MCP-Jurisprudence` (`juris`, 10 outils) | Cible Phase 3 (`v0.8.0`) |
 |---|---|---|---|
@@ -56,9 +56,9 @@
 ### 0.2 Matrice des plateformes clientes et modes de recherche approfondie (*Deep Research*)
 
 Ni **Claude Research** ni **Gemini Deep Research** n'exigent de façades d'outils `search`/`fetch`
-artificielles : tous deux découvrent et invoquent directement les **32 outils existants** (`10`
-`lois`, `10` `juris`, `12` `outils`, bien en deçà du plafond de `100` outils/serveur de Gemini
-Enterprise et sous la limite stricte de `<= 64` caractères d'identifiant composé).
+artificielles : tous deux découvrent et invoquent directement les **37 outils** (`10` `lois`,
+`12` `juris`, `15` `outils`, bien en deçà du plafond de `100` outils/serveur de Gemini Enterprise
+et sous la limite stricte de `<= 64` caractères d'identifiant composé).
 
 | Surface cliente / Mode | Monture cible | Mécanisme d'authentification | Compétences (`SKILL.md`) | Exigences spécifiques d'infrastructure |
 |---|---|---|---|---|
@@ -76,7 +76,7 @@ Enterprise et sous la limite stricte de `<= 64` caractères d'identifiant compos
 | # | Décision | Motif |
 |---|---|---|
 | S1 | Un dépôt partagé, **`MCP-Socle`** (`@poirierlavoie/mcp-socle`), source unique du **protocole MCP sans état**, de l'**identité / OAuth 2.1 / coffre** et des **primitives de gouverne et de télémétrie sans contenu**, sans aucun concept juridique. | **AMENDÉE les 2026-09-17 et 2026-11-18.** Trois Workers (`MCP-Acces`, `MCP-Legislation`, `MCP-Jurisprudence`) partagent la même base D1 `DB_IDENTITE`, la même enveloppe cryptographique de coffre et les mêmes contrats OAuth 2.1 / quotas : dupliquer ces primitives dans trois dépôts garantirait une dérive de sécurité. Le socle reste 100 % agnostique du domaine juridique (vérifié par `test/doc.test.ts`). |
-| S2 | Le socle est une **dépendance de développement**, empaquetée par `esbuild` au déploiement, par étiquette git immuable (`#v0.8.4`). Jamais une dépendance d'exécution. | Zéro dépendance `dependencies` dans les Workers déployés ; code audité, versionné et figé par tag semver immuable. |
+| S2 | Le socle est une **dépendance de développement**, empaquetée par `esbuild` au déploiement, par étiquette git immuable (`#v0.8.5`). Jamais une dépendance d'exécution. | Zéro dépendance `dependencies` dans les Workers déployés ; code audité, versionné et figé par tag semver immuable. |
 | S3 | Les Workers servent **`2026-07-28` en tête**, puis `2025-11-25`, `2025-06-18` et `2025-03-26` (tant qu'un client ou script de veille omet l'en-tête). | Protocole sans état : ni session, ni `Mcp-Session-Id`, ni Durable Object routé. |
 | S4 | `MCP-Legislation` opère hors `McpAgent`, `@modelcontextprotocol/sdk` et Durable Object. | Supprime l'état par session et le coût de stockage par poignée. |
 | S5 | **Sortie double partout — ABANDONNÉE le 2026-09-17 sur mesure.** | Mesuré en production : `tools/list` passait de 12 279 à 43 145 octets (~3 070 à ~10 786 jetons par session). `MCP-Jurisprudence` demeure en prose seule ; `MCP-Legislation` conserve sa `structuredContent` plate existante sans `outputSchema`. |
@@ -101,7 +101,7 @@ Enterprise et sous la limite stricte de `<= 64` caractères d'identifiant compos
 
 ---
 
-## 2. Arborescence livrée de `MCP-Socle` (`v0.8.0` — relevé du 2026-11-18)
+## 2. Arborescence livrée de `MCP-Socle` (`v0.8.5` — relevé initial du 2026-11-18, actualisé)
 
 ```text
 MCP-Socle/
@@ -143,7 +143,7 @@ MCP-Socle/
 ├── LICENSE                   Apache-2.0 (texte officiel)
 ├── NOTICE                    Création assistée par IA, portée et non-revendication
 ├── osv-scanner.toml          registre daté et motivé des exemptions OSV de devDependencies
-└── package.json              "type": "module", version 0.8.4, zéro dépendance d'exécution
+└── package.json              "type": "module", version 0.8.5, zéro dépendance d'exécution
 ```
 
 **Frontière infranchissable :** `MCP-Socle` ne contient aucun concept juridique (`test/doc.test.ts`).
@@ -458,7 +458,7 @@ l'exploitant consignée en ajout seul dans `registre_gouverne` (`G12`).
 
 ## 9. Portail dédié `MCP-Acces` (`https://acces.poirierlavoie.ca`)
 
-Worker Cloudflare autonome (nouveau dépôt `MCP-Acces`), consommant `@poirierlavoie/mcp-socle#v0.8.0`,
+Worker Cloudflare autonome (`MCP-Acces`), consommant `@poirierlavoie/mcp-socle#v0.8.5`,
 lié à `DB_IDENTITE` (`mcp-identite`), au secret `COFFRE_MAITRE_V1`, au secret `CONSOLE_TOKEN` et à
 la liaison Cloudflare Email Sending (`send_email`, expéditeur `noreply@acces.poirierlavoie.ca`).
 
@@ -491,11 +491,11 @@ chargés depuis un domaine tiers.
 
 **Règle d'or :** *ajouter d'abord, servir les deux, vérifier en conditions réelles, retirer ensuite.*
 
-1. **Publier `@poirierlavoie/mcp-socle#v0.8.0` (Phase 1 — fait).** Aucun Worker en production n'est encore modifié.
-2. **Déployer `mcp-identite` (`DB_IDENTITE`) et `MCP-Acces` (`acces.poirierlavoie.ca`) (Phase 2).** Créer votre propre compte `titulaire` d'exploitant, déposer votre clé CanLII dans `coffre_clef`, frapper votre jeton individuel `les_deux` et tester le flux OAuth 2.1 de bout en bout hors production.
-3. **Mettre à niveau `MCP-Legislation` et `MCP-Jurisprudence` en coexistence (Phase 3a).** Lier `DB_IDENTITE`, ouvrir `/mcp/oauth` et `/.well-known/oauth-protected-resource*`, accepter sur `/mcp` les jetons D1 **en parallèle** des secrets actuels (`MCP_TOKEN`, `MCP_TOKEN_VEILLE`, `MCP_SHARED_SECRET`), désactiver `observability` / `invocation_logs`, cesser toute écriture dans `search_log`, activer les nouveaux limiteurs à `namespace_id` distincts et régler le WAF de zone.
-4. **Basculer vos propres clients sur votre jeton de `titulaire` (et OAuth 2.1), puis retirer les secrets personnels hérités (Phase 3b).** Vérifier que `CLEF_ABSENTE` est bien retournée à un titulaire d'essai sans clé alors même que le cache D1 contient des arrêts (`G8`), puis supprimer `CANLII_API_KEY`, `MCP_TOKEN` et `MCP_SHARED_SECRET` (en ne conservant que `MCP_TOKEN_VEILLE` si la veille CI l'utilise, ou un jeton de titulaire dédié `legislation`).
-5. **Aligner `droit-civil-quebecois` et `MCP-Outils`, puis ouvrir graduellement (Phase 4).** Mettre à jour les `README.md`, `SECURITY.md`, `LICENSE` et guides Deep Research, exécuter `verifier_tout.py --mode live`, puis ouvrir la file d'admission `/demande`.
+1. **Publier `@poirierlavoie/mcp-socle#v0.8.0` -> `#v0.8.5` (Phase 1 — fait).** Aucun Worker en production n'est encore modifié lors de la phase initiale.
+2. **Déployer `mcp-identite` (`DB_IDENTITE`) et `MCP-Acces` (`acces.poirierlavoie.ca`) (Phase 2 — fait).** Créer votre propre compte `titulaire` d'exploitant, déposer votre clé CanLII dans `coffre_clef`, frapper votre jeton individuel `les_deux` et tester le flux OAuth 2.1 de bout en bout hors production.
+3. **Mettre à niveau `MCP-Legislation` et `MCP-Jurisprudence` en coexistence (Phase 3a — fait).** Lier `DB_IDENTITE`, ouvrir `/mcp/oauth` et `/.well-known/oauth-protected-resource*`, accepter sur `/mcp` les jetons D1 **en parallèle** des secrets actuels (`MCP_TOKEN`, `MCP_TOKEN_VEILLE`, `MCP_SHARED_SECRET`), désactiver `observability` / `invocation_logs`, cesser toute écriture dans `search_log`, activer les nouveaux limiteurs à `namespace_id` distincts et régler le WAF de zone.
+4. **Basculer vos propres clients sur votre jeton de `titulaire` (et OAuth 2.1), puis retirer les secrets personnels hérités (Phase 3b — fait).** Vérifier que `CLEF_ABSENTE` est bien retournée à un titulaire d'essai sans clé alors même que le cache D1 contient des arrêts (`G8`), puis supprimer `CANLII_API_KEY`, `MCP_TOKEN` et `MCP_SHARED_SECRET` (en ne conservant que `MCP_TOKEN_VEILLE` si la veille CI l'utilise, ou un jeton de titulaire dédié `legislation`).
+5. **Aligner `droit-civil-quebecois` (`v3.3.1`) et `MCP-Outils`, puis ouvrir graduellement (Phase 4 — fait).** Mettre à jour les `README.md`, `SECURITY.md`, `LICENSE` et guides Deep Research, exécuter `verifier_tout.py --mode live`, puis ouvrir la file d'admission `/demande`.
 
 ---
 
@@ -533,7 +533,7 @@ chargés depuis un domaine tiers.
 
 | Phase | Dépôt(s) | Contenu livrable |
 |---|---|---|
-| **Phase 1** *(livrée)* | `MCP-Socle` (`v0.8.0`) | Mise à jour de `SPEC-SOCLE-COMMUN.md`, `titulaire.ts`, `coffre.ts` (`empreinteCoffre` & `repereCoffre` HMAC), `oauth.ts` (`porteesCanoniques`), `gouverne.ts` (sas `demande_acces`, `invitation_acces`, purges indexées Loi 25, `POLITIQUES_RETENTION_IDENTITE`), extensions `porteur.ts` / `refus.ts` / `http.ts`, migration `@cloudflare/vitest-plugin`, autorisation de pratique professionnelle dans `LICENSE`, parité `CLAUDE.md` = `GEMINI.md`, tests de garde `workerd` (`G7`–`G10`, `G13`, `G16`, `G18`, `G21`, `G25`, `G32`, `G33`, `G35`, `G36`) |
-| **Phase 2** | `MCP-Acces` *(nouveau)* + D1 `mcp-identite` | Worker `acces.poirierlavoie.ca`, migrations D1 `mcp-identite`, Cloudflare Email Sending (`noreply@acces.poirierlavoie.ca`), `/demande` (vérification courriel + épreuve CanLII en direct + scellement coffre), `/moi`, `/exploitant`, serveur OAuth 2.1 (`/oauth/*`, RFC 8414, CIMD) et les 5 documents publics (`/cgu`, `/confidentialite`, `/attestation`, `/conformite`, `/gouverne`) |
-| **Phase 3** | `MCP-Legislation` & `MCP-Jurisprudence` | Passage à `@poirierlavoie/mcp-socle#v0.8.0`, liaison `DB_IDENTITE`, double monture `/mcp` (`404` uniforme) + `/mcp/oauth` (`401` RFC 9728), BYOK CanLII strict + cache partagé sans `fetched_at` (`G38`), bascule `hybride_permis`, retrait/archivage de `search_log`, désactivation d'`observability` (`G37`), limiteurs Deep Research (`1011..1025`, `G34`), `openWorldHint: false` sur outils hors ligne, mise à jour de `GET /`, `/mcp/server-card`, `README.md`, `SECURITY.md` et `LICENSE` |
-| **Phase 4** | `droit-civil-quebecois` & `MCP-Outils` | Mise à jour de `README.md`, `SECURITY.md`, `LICENSE` (autorisation de pratique professionnelle), `CLAUDE.md` / `GEMINI.md`, instructions de connexion multi-plateformes et Deep Research (préambule `SAFETY-KERNEL`), `verifier.py`, `verifier_tout.py --mode live` et ouverture graduée |
+| **Phase 1** *(livrée ; socle courant `v0.8.5`)* | `MCP-Socle` (`v0.8.0` -> `v0.8.5`) | Mise à jour de `SPEC-SOCLE-COMMUN.md`, `titulaire.ts`, `coffre.ts` (`empreinteCoffre` & `repereCoffre` HMAC), `oauth.ts` (`porteesCanoniques`), `gouverne.ts` (sas `demande_acces`, `invitation_acces`, purges indexées Loi 25, `POLITIQUES_RETENTION_IDENTITE`), extensions `porteur.ts` / `refus.ts` / `http.ts`, migration `@cloudflare/vitest-plugin`, autorisation de pratique professionnelle dans `LICENSE`, parité `CLAUDE.md` = `GEMINI.md`, tests de garde `workerd` (`G7`–`G10`, `G13`, `G16`, `G18`, `G21`, `G25`, `G32`, `G33`, `G35`, `G36`) |
+| **Phase 2** *(livrée)* | `MCP-Acces` + D1 `mcp-identite` | Worker `acces.poirierlavoie.ca`, migrations D1 `mcp-identite`, Cloudflare Email Sending (`noreply@acces.poirierlavoie.ca`), `/demande` (vérification courriel + épreuve CanLII en direct + scellement coffre), `/moi`, `/exploitant`, serveur OAuth 2.1 (`/oauth/*`, RFC 8414, CIMD) et les 5 documents publics (`/cgu`, `/confidentialite`, `/attestation`, `/conformite`, `/gouverne`) |
+| **Phase 3** *(livrée)* | `MCP-Legislation` & `MCP-Jurisprudence` | Passage à `@poirierlavoie/mcp-socle#v0.8.0` (aligné `#v0.8.5`), liaison `DB_IDENTITE`, double monture `/mcp` (`404` uniforme) + `/mcp/oauth` (`401` RFC 9728), BYOK CanLII strict + cache partagé sans `fetched_at` (`G38`), bascule `hybride_permis`, retrait/archivage de `search_log`, désactivation d'`observability` (`G37`), limiteurs Deep Research (`1011..1025`, `G34`), `openWorldHint: false` sur outils hors ligne, mise à jour de `GET /`, `/mcp/server-card`, `README.md`, `SECURITY.md` et `LICENSE` |
+| **Phase 4** *(livrée)* | `droit-civil-quebecois` (`v3.3.1`) & `MCP-Outils` | Mise à jour de `README.md`, `SECURITY.md`, `LICENSE` (autorisation de pratique professionnelle), `CLAUDE.md` / `GEMINI.md`, instructions de connexion multi-plateformes et Deep Research (préambule `SAFETY-KERNEL`), `verifier.py`, `verifier_tout.py --mode live` et ouverture graduée |
