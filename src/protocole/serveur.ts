@@ -1,12 +1,3 @@
-/**
- * Répartiteur MCP HTTP sans état, commun aux deux serveurs.
- *
- * Prend une requête `POST` déjà contrôlée en amont (coupe-circuit, origine, débit,
- * authentification), lit le corps de façon bornée, négocie la version, vérifie la
- * concordance des en-têtes sous les révisions modernes, et répartit `server/discover`,
- * `initialize`, `ping`, `tools/list` et `tools/call`.
- */
-
 import { type IdentiteServeur, resultatDecouverte } from "./decouverte";
 import { HEADER_MISMATCH, validerEntetes } from "./entetes";
 import { corsHeaders, jsonResponse } from "./http";
@@ -32,48 +23,26 @@ import {
   versionAbsenteAdmise,
 } from "./versions";
 
-/** Plafond de lecture du corps d'une requête JSON-RPC MCP : 64 Kio. */
 export const MAX_OCTETS_CORPS_MCP = 65_536;
 
 export interface OptionsServeurMcp {
-  /** Versions MCP servies, la plus élevée en tête. */
   versions: readonly string[];
-  /** Capacités annoncées à `initialize` et `server/discover`. */
   capabilities: Record<string, unknown>;
-  /** Identité du serveur (`name`, `title?`, `version`). */
   serverInfo: IdentiteServeur;
-  /** Instructions générales renvoyées à `initialize` et `server/discover`. */
   instructions?: string;
-  /** Descripteurs publics renvoyés à `tools/list`. */
   descripteurs: Array<Record<string, unknown>> | (() => Array<Record<string, unknown>>);
-  /** Gestionnaire d'exécution pour `tools/call`. */
   appeler: (nom: unknown, args: unknown, message: JsonRpcMessage) => Promise<ToolResult>;
-  /** Origine CORS autorisée pour cette requête (ou `null` hors navigateur). */
   origin: string | null;
-  /** Admettre une requête sans en-tête `MCP-Protocol-Version` (clients < `2025-06-18`). */
   sertAvant2025_06_18?: boolean;
-  /**
-   * Exiger `_meta["io.modelcontextprotocol/protocolVersion"]` sous une révision moderne pour les
-   * méthodes non exemptées (`initialize`, `ping`, `server/discover` restent tolérantes s'il est
-   * omis, mais rejettent toujours une valeur non textuelle ou discordante). Défaut : `false`.
-   */
   exigerVersionMeta?: boolean;
-  /** Durée de cache en millisecondes pour `server/discover` et `tools/list`. Défaut : 1 heure. */
   ttlListeMs?: number;
-  /** Portée de cache des résultats cachables. Défaut : `"public"`. */
   cacheScope?: PorteeCache;
-  /** Plafond d'octets du corps JSON-RPC. Défaut : `MAX_OCTETS_CORPS_MCP`. */
   maxOctetsCorps?: number;
-  /** Journalisation sûre en cas d'exception inattendue (méthode + erreur, jamais de secret). */
   surErreur?: (methode: string, erreur: unknown) => void;
 }
 
 type LectureCorps = { ok: true; texte: string } | { ok: false; motif: "trop_grand" | "encodage" };
 
-/**
- * Lit le corps d'une requête HTTP en plafonnant strictement le nombre d'octets reçus, sans
- * faire confiance au seul en-tête `Content-Length`.
- */
 export async function lireCorpsBorne(
   request: Request,
   maxOctets = MAX_OCTETS_CORPS_MCP,
@@ -127,7 +96,6 @@ export async function lireCorpsBorne(
 
 const METHODES_SANS_META_OBLIGATOIRE = new Set(["initialize", "ping", "server/discover"]);
 
-/** Traite un appel `POST` JSON-RPC MCP déjà authentifié et autorisé en origine/débit. */
 export async function servirRequeteMcp(
   request: Request,
   options: OptionsServeurMcp,

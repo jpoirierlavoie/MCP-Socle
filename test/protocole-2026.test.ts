@@ -16,9 +16,9 @@ import {
   CLEF_VERSION,
   clientLisible,
   complet,
-  estCachable,
   habillerResultat,
   lireMeta,
+  RESULTATS_CACHABLES,
 } from "../src/protocole/meta";
 import {
   erreurVersion,
@@ -45,8 +45,6 @@ describe("versions", () => {
     expect(negocier("2025-11-25", SERVIES)).toEqual({ version: "2025-11-25" });
     const r = negocier("1900-01-01", SERVIES) as { erreur: { code: number; data: unknown } };
     expect(r.erreur.code).toBe(UNSUPPORTED_PROTOCOL_VERSION);
-    // Sans la liste des versions servies, un client ne peut que renoncer ; avec elle, il
-    // en choisit une et réessaie. C'est tout l'intérêt du champ `data`.
     expect(r.erreur.data).toEqual({ supported: SERVIES, requested: "1900-01-01" });
   });
 
@@ -58,9 +56,6 @@ describe("versions", () => {
   });
 
   it("`initialize` est TOUJOURS exempté de l'en-tête de version", () => {
-    // Sous 2025-06-18 l'en-tête n'est exigé qu'APRÈS l'initialisation : le POST initialize
-    // n'en porte légitimement aucun. Le refuser rejetterait la poignée de tout client
-    // conforme, connecteur claude.ai compris.
     expect(versionAbsenteAdmise("initialize", false)).toBe(true);
     expect(versionAbsenteAdmise("initialize", true)).toBe(true);
   });
@@ -77,8 +72,6 @@ describe("sentinelle base64", () => {
   });
 
   it("décode l'UTF-8, et pas seulement les octets", () => {
-    // `atob` rend une chaîne d'octets : sans relecture UTF-8, « é » revient en deux
-    // caractères et la comparaison échoue sur un nom pourtant correct.
     const encode = `=?base64?${btoa(String.fromCharCode(...new TextEncoder().encode("café à Montréal")))}?=`;
     expect(decoderSentinelle(encode)).toBe("café à Montréal");
   });
@@ -124,7 +117,6 @@ describe("validation en-tête contre corps", () => {
   });
 
   it("`Mcp-Name` n'est exigé que pour les trois méthodes qui en ont un", () => {
-    // `tools/list` n'a pas de nom : en réclamer un refuserait un client conforme.
     expect(validerEntetes(h(entetesOk), ok)).toBeNull();
   });
 
@@ -186,8 +178,6 @@ describe("_meta", () => {
   });
 
   it("clientLisible ne garde QUE le nom et la version", () => {
-    // `clientInfo` est un objet ouvert : un client peut y mettre n'importe quoi, et rien
-    // d'autre que ces deux champs ne doit pouvoir entrer dans un journal.
     expect(clientLisible({ name: "Claude", version: "2.1" })).toBe("Claude/2.1");
     expect(clientLisible({ name: "Claude" })).toBe("Claude");
     expect(clientLisible(undefined)).toBeUndefined();
@@ -195,9 +185,6 @@ describe("_meta", () => {
 
   it("serverInfo va dans `_meta`, PAS à la racine du résultat", () => {
     const r = avecServerInfo({ a: 1 }, { name: "S", version: "1" });
-    // Le cast est nécessaire : le TYPE dit déjà qu'il n'y a pas de `serverInfo` à la
-    // racine. On vérifie ici le FAIT à l'exécution, pour que la garantie survive à un
-    // changement de signature qui l'y remettrait.
     expect((r as Record<string, unknown>).serverInfo).toBeUndefined();
     expect((r._meta as Record<string, unknown>)[CLEF_SERVEUR]).toEqual({ name: "S", version: "1" });
   });
@@ -210,11 +197,11 @@ describe("_meta", () => {
 
 describe("indices de cache", () => {
   it("`server/discover` EST cachable — le tableau de la §3.2 l'oubliait", () => {
-    expect(estCachable("server/discover")).toBe(true);
+    expect(RESULTATS_CACHABLES).toContain("server/discover");
     for (const m of ["tools/list", "resources/read", "resources/templates/list"]) {
-      expect(estCachable(m)).toBe(true);
+      expect(RESULTATS_CACHABLES).toContain(m);
     }
-    expect(estCachable("tools/call")).toBe(false);
+    expect(RESULTATS_CACHABLES).not.toContain("tools/call");
   });
 
   it("refuse un ttlMs négatif ou fractionnaire", () => {
@@ -385,7 +372,7 @@ describe("fiche SEP-2127 (server card)", () => {
     const carteAvecOAuth = construireCarteServeur({
       name: "ca.exemple/test",
       title: "Serveur Test",
-      version: "0.8.6",
+      version: "0.8.7",
       description: "Description publique.",
       websiteUrl: "https://exemple.test/",
       repositoryUrl: "https://github.com/exemple/test",

@@ -11,7 +11,6 @@ import {
   MAX_LONGUEUR_PORTEUR,
   ouvrir,
   type Porte,
-  porteurEntete,
   queueJeton,
 } from "../src/identite/porteur";
 import {
@@ -51,7 +50,7 @@ function creerDepotMemoire(lignes: Record<string, EnregistrementJetonTitulaire>)
   return { depot, lectures, misesAJourVuLe };
 }
 
-describe("estJetonFrappe, queueJeton et porteurEntete", () => {
+describe("estJetonFrappe, queueJeton et lirePorteurEntete", () => {
   it("reconnaît exclusivement les jetons 43 caractères base64url et en extrait la queue de 6 car.", () => {
     const j = frapperJeton();
     expect(estJetonFrappe(j)).toBe(true);
@@ -74,21 +73,16 @@ describe("estJetonFrappe, queueJeton et porteurEntete", () => {
     });
     expect(lirePorteurEntete(rOk, "")).toEqual({ etat: "absent" });
     expect(lirePorteurEntete(rOk, "X-Absent")).toEqual({ etat: "absent" });
-    expect(porteurEntete(rOk, "X-Porteur-Externe")).toBe("valeur-valide");
-    expect(porteurEntete(rOk, "")).toBeNull();
-    expect(porteurEntete(rOk, "X-Absent")).toBeNull();
 
     const rVide = new Request("https://exemple.test/mcp", {
       headers: { "X-Porteur-Externe": "   " },
     });
     expect(lirePorteurEntete(rVide, "X-Porteur-Externe")).toEqual({ etat: "invalide" });
-    expect(porteurEntete(rVide, "X-Porteur-Externe")).toBeNull();
 
     const rTropLong = new Request("https://exemple.test/mcp", {
       headers: { "X-Porteur-Externe": "x".repeat(MAX_LONGUEUR_PORTEUR + 1) },
     });
     expect(lirePorteurEntete(rTropLong, "X-Porteur-Externe")).toEqual({ etat: "invalide" });
-    expect(porteurEntete(rTropLong, "X-Porteur-Externe")).toBeNull();
 
     const rTresLong = new Request("https://exemple.test/mcp", {
       headers: { "X-Porteur-Externe": "x".repeat(MAX_LONGUEUR_PORTEUR * 2 + 1) },
@@ -233,7 +227,6 @@ describe("resoudreJeton — G7 (zéro oracle) et G21 (fermé par défaut)", () =
     });
     expect(misesAJourVuLe).toEqual([{ jetonId: "jet_42", jourUtc: "2026-11-18" }]);
 
-    // Déjà vu le même jour UTC : aucune écriture D1 supplémentaire.
     const dejaVu = creerDepotMemoire({
       [hash]: {
         jeton_id: "jet_42",
@@ -263,7 +256,6 @@ describe("resoudreJeton — G7 (zéro oracle) et G21 (fermé par défaut)", () =
     expect(await resoudreJeton(depot, candidats)).toBeNull();
     expect(lectures).toHaveLength(MAX_CANDIDATS_JETON);
 
-    // Même si le 1er candidat est actif, le 2e candidat est aussi interrogé (zéro court-circuit).
     const jActif = frapperJeton();
     const jSecond = frapperJeton();
     const sansCourtCircuit = creerDepotMemoire({
@@ -290,11 +282,8 @@ describe("resoudreJeton — G7 (zéro oracle) et G21 (fermé par défaut)", () =
   });
 
   it("horodatageUtcMs et expire_le comparent l'époque numérique (RFC 3339 sans ms, SQLite UTC, dates invalides fermées)", async () => {
-    // "2026-11-18T14:30:45Z" est ANTÉRIEUR à HORLOGE_FIXE ("2026-11-18T14:30:45.123Z") même si 'Z' > '.' en ASCII !
     const jSansMsExpire = frapperJeton();
-    // Format SQLite "2026-11-18 23:59:59" est POSTÉRIEUR à HORLOGE_FIXE même si ' ' < 'T' en ASCII !
     const jSqliteEncoreValide = frapperJeton();
-    // Chaîne corrompue ou vide -> doit échouer FERMÉ (null), jamais ouvert !
     const jDateCorrompue = frapperJeton();
     const jDateVide = frapperJeton();
 
@@ -415,7 +404,6 @@ describe("ouvrirPrincipal et creerDepotJetonsD1", () => {
     expect(urlSortie.searchParams.get("key")).toBeNull();
     expect(urlSortie.searchParams.get("garde")).toBe("1");
 
-    // Appelant CI / transitoire par secret partagé (64 car. hex généré par openssl rand -hex 32) :
     const secretHex64 = "a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90";
     const empreintesSecretPartage: string[] = [];
     const reqCi = new Request("https://exemple.test/mcp", {
@@ -438,7 +426,6 @@ describe("ouvrirPrincipal et creerDepotJetonsD1", () => {
     expect(ouvertCi?.requete).toBe(reqCi);
     expect(empreintesSecretPartage).toEqual([await empreinte(secretHex64)]);
 
-    // Sur la monture OAuth (/mcp/oauth, autoriserChemin: false), tout sous-chemin est rejeté MÊME avec Bearer valide :
     const porteOAuth: Porte = {
       mount: "/mcp/oauth",
       nomsSecrets: [],
@@ -456,7 +443,6 @@ describe("ouvrirPrincipal et creerDepotJetonsD1", () => {
       }),
     ).toBeNull();
 
-    // /mcp/oauth/ (barre finale seule) avec Bearer valide est accepté et normalisé vers /mcp/oauth :
     const reqBarreFinaleOAuth = new Request("https://exemple.test/mcp/oauth/", {
       method: "POST",
       headers: { Authorization: `Bearer ${jetonValide}` },
@@ -470,7 +456,6 @@ describe("ouvrirPrincipal et creerDepotJetonsD1", () => {
     );
     expect(new URL(ouvertOAuth!.requete.url).pathname).toBe("/mcp/oauth");
 
-    // Sur segmentBorne: true (/mcp), un chemin profond /mcp/a/b est rejeté MÊME avec Bearer ou secret CI valide :
     const reqProfonde = new Request("https://exemple.test/mcp/a/b", {
       method: "POST",
       headers: { Authorization: "Bearer secret-veille-ci" },
@@ -561,7 +546,6 @@ describe("ouvrirPrincipal et creerDepotJetonsD1", () => {
       vuLe: null,
     });
 
-    // Vérifie que vu_le a réellement été écrit dans SQLite/D1 et que le jeton révoqué/hors portée échoue :
     const apresVu = await resoudreJeton(depotD1, [jetonActif], {
       service: "service_a",
       horloge: HORLOGE_FIXE,

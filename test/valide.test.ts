@@ -65,8 +65,6 @@ describe("fermeture par défaut sur type inconnu", () => {
 
 describe("le piège des valeurs par défaut", () => {
   it("`default` n'est JAMAIS appliqué — il est publié, pas exécuté", () => {
-    // Le défaut vit dans le schéma publié par `tools/list` ; la valeur, elle, doit
-    // descendre dans le gestionnaire. Un schéma qui porte `default` ne fait rien arriver.
     const s = objet({ lang: { type: "string", enum: ["fr", "en"], default: "fr" } });
     const args: Record<string, unknown> = {};
     expect(validateArgs(s, args)).toEqual([]);
@@ -134,9 +132,6 @@ describe("objets", () => {
 
 describe("$schema", () => {
   it("est accepté par le type, et IGNORÉ par la validation", () => {
-    // Publié pour le client — `2026-07-28` lit l'absence de ce champ comme « 2020-12 » —
-    // mais le validateur n'implémente qu'un sous-ensemble commun aux dialectes : il n'a
-    // pas à trancher, et ne doit surtout pas refuser un schéma parce qu'il le porte.
     const s: JsonSchema = {
       $schema: "http://json-schema.org/draft-07/schema#",
       type: "object",

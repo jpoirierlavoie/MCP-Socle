@@ -3,6 +3,7 @@ import {
   apparie,
   bearerOf,
   empreinte,
+  estCheminMontageAdmissible,
   frapperJeton,
   LONGUEUR_JETON,
   MAX_LONGUEUR_PORTEUR,
@@ -10,18 +11,16 @@ import {
   ouvrir,
   type Porte,
   porteursPresentes,
+  sansBarresFinales,
   secretsAdmis,
-  trimTrailingSlash,
 } from "../src/identite/porteur";
 
-/** `legislation` : trois porteurs, chemin borné à un segment (il réécrit l'URL). */
 const PORTE_LEGIS: Porte = {
   mount: "/mcp",
   queryKey: "key",
   nomsSecrets: ["MCP_TOKEN", "MCP_TOKEN_ATHENA"],
   segmentBorne: true,
 };
-/** `jurisprudence` : deux porteurs, chemin non borné, aucun `?key=`. */
 const PORTE_JURIS: Porte = { mount: "/mcp", nomsSecrets: ["MCP_SHARED_SECRET"] };
 
 const JETON = "jeton-de-test-parfaitement-quelconque";
@@ -30,17 +29,20 @@ const u = (s: string) => new URL(s);
 const presentes = (url: string, porte: Porte, h: Record<string, string> = {}) =>
   porteursPresentes(req(url, h), u(url), porte);
 
-describe("trimTrailingSlash", () => {
-  it("ôte les barres finales, préserve la racine", () => {
-    expect(trimTrailingSlash("/mcp/")).toBe("/mcp");
-    expect(trimTrailingSlash("/mcp///")).toBe("/mcp");
-    expect(trimTrailingSlash("/")).toBe("/");
+describe("sansBarresFinales et estCheminMontageAdmissible", () => {
+  it("ôte les barres finales et préserve la racine dans estCheminMontageAdmissible", () => {
+    expect(sansBarresFinales("/mcp/")).toBe("/mcp");
+    expect(sansBarresFinales("/mcp///")).toBe("/mcp");
+    expect(sansBarresFinales("/")).toBe("");
+    expect(estCheminMontageAdmissible("/", { mount: "/", nomsSecrets: [] })).toBe(true);
+    expect(estCheminMontageAdmissible("/", PORTE_LEGIS)).toBe(false);
+    expect(estCheminMontageAdmissible("/mcp/", PORTE_LEGIS)).toBe(true);
   });
 
   it("reste linéaire sur des rafales de barres obliques (anti-ReDoS)", () => {
     const rafale = `${"/".repeat(5_000)}a`;
-    expect(trimTrailingSlash(`/mcp${rafale}`)).toBe(`/mcp${rafale}`);
-    expect(trimTrailingSlash(`/mcp/${"/".repeat(5_000)}`)).toBe("/mcp");
+    expect(sansBarresFinales(`/mcp${rafale}`)).toBe(`/mcp${rafale}`);
+    expect(sansBarresFinales(`/mcp/${"/".repeat(5_000)}`)).toBe("/mcp");
   });
 });
 
@@ -51,8 +53,6 @@ describe("memeSecret", () => {
   });
 
   it("ne lève PAS sur des longueurs différentes — c'est tout l'intérêt du condensé", async () => {
-    // `timingSafeEqual` exige deux tampons de même taille : comparer les chaînes brutes
-    // lèverait, et l'exception elle-même divulguerait la longueur du secret.
     await expect(memeSecret("court", "beaucoup plus long")).resolves.toBe(false);
   });
 });
@@ -71,8 +71,6 @@ describe("bearerOf", () => {
 
 describe("porteursPresentes — aucun porteur n'en masque un autre", () => {
   it("un Authorization résiduel n'annule pas une URL correcte", () => {
-    // Le défaut corrigé : un en-tête périmé masquait définitivement le jeton du chemin, et
-    // le refus était indiscernable d'un mauvais secret.
     const p = presentes(`https://x/mcp/${JETON}`, PORTE_LEGIS, { Authorization: "Bearer perime" });
     expect(p).toContain(JETON);
     expect(p).toContain("perime");
@@ -82,7 +80,7 @@ describe("porteursPresentes — aucun porteur n'en masque un autre", () => {
     const p = presentes(`https://x/mcp/${JETON}?key=${JETON}`, PORTE_LEGIS, {
       Authorization: `Bearer ${JETON}`,
     });
-    expect(p).toEqual([JETON]); // dédoublonnés : trois porteurs, un seul candidat
+    expect(p).toEqual([JETON]);
   });
 
   it("N'OUVRE PAS ?key= quand la porte ne le déclare pas", () => {
@@ -93,14 +91,14 @@ describe("porteursPresentes — aucun porteur n'en masque un autre", () => {
 describe("porteursPresentes — élargir, jamais transformer", () => {
   it("la barre finale produit un candidat DE PLUS, pas un remplacement", () => {
     const p = presentes(`https://x/mcp/${JETON}/`, PORTE_LEGIS);
-    expect(p).toContain(JETON); // la forme rognée
-    expect(p).toContain(`${JETON}/`); // ET la forme brute : le secret peut finir par « / »
+    expect(p).toContain(JETON);
+    expect(p).toContain(`${JETON}/`);
   });
 
   it("la forme BRUTE est conservée — le secret peut contenir un pourcentage", () => {
     const p = presentes("https://x/mcp/a%2Fb", PORTE_LEGIS);
-    expect(p).toContain("a%2Fb"); // tel quel
-    expect(p).toContain("a/b"); // et décodé
+    expect(p).toContain("a%2Fb");
+    expect(p).toContain("a/b");
   });
 
   it("un pourcentage malformé ne lève pas, et ne perd pas la forme brute", () => {
@@ -124,8 +122,6 @@ describe("porteursPresentes — segmentBorne", () => {
   });
 
   it("non borné : un chemin profond est un candidat entier", () => {
-    // `jurisprudence` ne remonte rien : borner serait un rétrécissement sans contrepartie,
-    // et si le secret contenait « / », `/mcp/a/b` l'authentifierait.
     expect(presentes("https://x/mcp/a/b", PORTE_JURIS)).toContain("a/b");
   });
 

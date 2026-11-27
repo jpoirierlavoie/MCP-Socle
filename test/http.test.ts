@@ -77,7 +77,6 @@ describe("corsHeaders", () => {
   });
 
   it("porte TOUJOURS Vary: Origin", () => {
-    // Sans lui, un cache intermédiaire resservirait à une origine la réponse d'une autre.
     expect(corsHeaders("https://claude.ai").Vary).toBe("Origin");
   });
 

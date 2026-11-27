@@ -30,7 +30,6 @@ describe("scellerCoffre et ouvrirCoffre — chiffrement par enveloppe dans worke
     expect(scelle.repere).not.toContain("secr");
     expect(scelle.empreinteClef).toMatch(/^[0-9a-f]{64}$/);
 
-    // Deux scellements identiques produisent deux IV et deux chiffrés distincts.
     const scelleBis = await scellerCoffre(valeurSecrete, {
       titulaireId: "tit_01",
       usage: "fournisseur_a",
@@ -85,7 +84,6 @@ describe("scellerCoffre et ouvrirCoffre — chiffrement par enveloppe dans worke
       etat: "valide",
     };
 
-    // Copie vers un autre titulaire (même en falsifiant entree.titulaireId) : AAD échoue.
     const copieAutreTitulaire = await ouvrirCoffre(
       {
         titulaireId: "tit_cible",
@@ -97,7 +95,6 @@ describe("scellerCoffre et ouvrirCoffre — chiffrement par enveloppe dans worke
     );
     expect(copieAutreTitulaire).toEqual({ ok: false, motif: "INVALIDE" });
 
-    // Mauvais usage : AAD + HKDF info échouent.
     const mauvaisUsage = await ouvrirCoffre(
       {
         titulaireId: "tit_source",
@@ -109,7 +106,6 @@ describe("scellerCoffre et ouvrirCoffre — chiffrement par enveloppe dans worke
     );
     expect(mauvaisUsage).toEqual({ ok: false, motif: "INVALIDE" });
 
-    // Octet altéré dans le chiffré : tag GCM échoue.
     const altere = new Uint8Array(scelle.chiffre);
     altere[0] = (altere[0] ?? 0) ^ 0xff;
     const tagInvalide = await ouvrirCoffre(
@@ -203,7 +199,6 @@ describe("scellerCoffre et ouvrirCoffre — chiffrement par enveloppe dans worke
     expect(refusee).toEqual({ ok: false, motif: "REFUSEE" });
     expect(fabriqueAppelee).toBe(false);
 
-    // S11 : une surcharge d'en-tête client valide prime même si l'entrée du coffre est refusée.
     const surcharge = await ouvrirCoffre(
       {
         titulaireId: "tit_rev",
@@ -220,8 +215,6 @@ describe("scellerCoffre et ouvrirCoffre — chiffrement par enveloppe dans worke
       client: { estSurcharge: true },
     });
 
-    // Une surcharge d'en-tête dépassant MAX_LONGUEUR_PORTEUR, vide/blanche ou { etat: "invalide" }
-    // échoue fermé ("INVALIDE") sans jamais retomber sur le coffre :
     for (const mauvaiseSurcharge of ["x".repeat(600), "", "   ", { etat: "invalide" } as const]) {
       let appelee = false;
       const surchargeInvalide = await ouvrirCoffre(
@@ -241,7 +234,6 @@ describe("scellerCoffre et ouvrirCoffre — chiffrement par enveloppe dans worke
       expect(appelee).toBe(false);
     }
 
-    // Une surcharge { etat: "absent" } retombe normalement sur le coffre valide :
     const surchargeAbsente = await ouvrirCoffre(
       {
         titulaireId: "tit_rev",
@@ -258,7 +250,6 @@ describe("scellerCoffre et ouvrirCoffre — chiffrement par enveloppe dans worke
       client: { clair: "secret-revoque-1234567890" },
     });
 
-    // Une surcharge { etat: "valide" } prime sans déchiffrer le coffre :
     const surchargeObjetValide = await ouvrirCoffre(
       {
         titulaireId: "tit_rev",
@@ -275,8 +266,6 @@ describe("scellerCoffre et ouvrirCoffre — chiffrement par enveloppe dans worke
       client: { clair: "clef-via-resultat-porteur" },
     });
 
-    // Une exception levée par `fabrique` se propage à l'identique sur `coffre` et `entete`
-    // (ne doit jamais être travestie en échec de déchiffrement "INVALIDE") :
     const valide = await scellerCoffre("secret-actif-1234567890", {
       titulaireId: "tit_ok",
       usage: "fournisseur_a",
@@ -301,7 +290,7 @@ describe("scellerCoffre et ouvrirCoffre — chiffrement par enveloppe dans worke
 
 describe("empreinteCoffre, repereCoffre à clé maître et expurger (G9)", () => {
   it("produit une empreinte HMAC identique entre collègues partageant une même clé, mais dépendante du maître et de l'usage (zéro oracle SHA-256 non salé)", async () => {
-    const clePartagee = "cleApiCabinet16c"; // 16 caractères exacts
+    const clePartagee = "cleApiCabinet16c";
     const sha256Brut = await empreinte(clePartagee);
 
     const col1 = await scellerCoffre(clePartagee, {
@@ -318,18 +307,14 @@ describe("empreinteCoffre, repereCoffre à clé maître et expurger (G9)", () =>
       maitreEmpreinte: MAITRE_V1,
     });
 
-    // Même empreinteClef et même repere (détection de doublon en console) mais chiffrés distincts :
     expect(col1.empreinteClef).toBe(col2.empreinteClef);
     expect(col1.repere).toBe(col2.repere);
     expect(Array.from(col1.chiffre)).not.toEqual(Array.from(col2.chiffre));
 
-    // Ni empreinteClef ni le suffixe de repere ne dérivent d'un SHA-256 non salé :
     expect(col1.empreinteClef).not.toBe(sha256Brut);
     expect(col1.repere.endsWith(`#${sha256Brut.slice(0, 8)}`)).toBe(false);
-    // Séparation de domaine entre empreinteClef et le tag #8 de repere :
     expect(col1.repere.endsWith(`#${col1.empreinteClef.slice(0, 8)}`)).toBe(false);
 
-    // Changement d'usage ou de secret maître -> empreinte et repère complètement distincts :
     const autreUsage = await empreinteCoffre(clePartagee, {
       usage: "fournisseur_b",
       maitre: MAITRE_V1,
@@ -345,14 +330,12 @@ describe("empreinteCoffre, repereCoffre à clé maître et expurger (G9)", () =>
   it("resserre le masquage de repereCoffre (< 16 : 0 car., 16..23 : 2 derniers, >= 24 : 4 derniers, zéro préfixe)", async () => {
     const opts = { usage: "fournisseur_a", maitre: MAITRE_V1 };
 
-    // < 16 caractères (incluant 12..15 car.) : aucun caractère en clair exposé
     for (const court of ["court123", "douzecar1234", "quinzecaractere"]) {
       const r = await repereCoffre(court, opts);
       expect(r).toMatch(/^••••#[0-9a-f]{8}$/);
       expect(r.slice(0, r.indexOf("#"))).toBe("••••");
     }
 
-    // 16..23 caractères (clés d'API usuelles de 16 à 20 car.) : uniquement les 2 derniers caractères
     const seize = await repereCoffre("AbcdEfghIjklMn9z", opts);
     expect(seize).toMatch(/^••••9z#[0-9a-f]{8}$/);
     expect(seize).not.toContain("Abcd");
@@ -361,12 +344,10 @@ describe("empreinteCoffre, repereCoffre à clé maître et expurger (G9)", () =>
     const vingtTrois = await repereCoffre("123456789012345678901Xy", opts);
     expect(vingtTrois).toMatch(/^••••Xy#[0-9a-f]{8}$/);
 
-    // >= 24 caractères : uniquement les 4 derniers caractères, jamais de préfixe
     const vingtQuatre = await repereCoffre("PrefixeSecret00000007890", opts);
     expect(vingtQuatre).toMatch(/^••••7890#[0-9a-f]{8}$/);
     expect(vingtQuatre).not.toContain("Pref");
 
-    // Points de code Unicode hors BMP (paires de substitution UTF-16 jamais scindées) :
     const astral = await repereCoffre(`${"A".repeat(15)}🔑`, opts);
     expect(astral).toMatch(/^••••A🔑#[0-9a-f]{8}$/);
 
@@ -414,11 +395,9 @@ describe("empreinteCoffre, repereCoffre à clé maître et expurger (G9)", () =>
     expect(propre).toContain("/.well-known/mcp/server-card.json");
     expect(propre).toContain("/mcp/oauth |");
 
-    // Corps x-www-form-urlencoded débutant directement par un paramètre sensible (sans ? ni &) :
     const formulaireOAuth = expurger("code=CODE_INITIAL_SECRET&code_verifier=PKCE_SECRET_43");
     expect(formulaireOAuth).toBe("code=[EXPURGE]&code_verifier=[EXPURGE]");
 
-    // Paramètres sensibles dont le nom est partiellement ou totalement encodé en pourcentage :
     const encodes = expurger(
       "GET https://exemple.test/mcp?%6bey=SECRET_ENC&foo=bar&%63ode=OAUTH_ENC&a%70i%5Fkey=API_ENC&%4BEY=SECRET_MAJ&%ZZ=invalide",
     );

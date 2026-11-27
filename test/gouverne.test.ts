@@ -12,7 +12,6 @@ import {
   incrementerCompteurJourD1,
   jourUtc,
   lireCompteursJourD1,
-  MODE_ADMISSION_PAR_DEFAUT,
   minuteUtc,
   POLITIQUES_RETENTION_IDENTITE,
   purgerEvenementsTechniquesD1,
@@ -96,7 +95,6 @@ describe("G32 & S15 — Débit d'arête : blocage brute-force vs rafales Deep Re
       if (!passePreAuth) continue;
 
       lecturesD1Attaquant++;
-      // Tous les jetons devinés échouent :
       await enregistrerEchecAuth({
         ip: ipAttaquant,
         quarantaine,
@@ -106,14 +104,10 @@ describe("G32 & S15 — Débit d'arête : blocage brute-force vs rafales Deep Re
       });
     }
 
-    // Exactement 21 requêtes ont franchi la pré-auth avant que le 21e échec ne place l'IP en quarantaine :
-    // les 979 autres n'ont jamais atteint D1.
     expect(lecturesD1Attaquant).toBe(21);
     expect(quarantaine.estEnQuarantaine(ipAttaquant, 1_500)).toBe(true);
     expect(quarantaine.estEnQuarantaine(ipAttaquant, 62_000)).toBe(false);
 
-    // En parallèle, 5 titulaires exécutent chacun 50 requêtes Deep Research (250 au total)
-    // depuis la MÊME adresse IP de sortie infonuagique partagée :
     const ipCloudPartagee = "203.0.113.10";
     let succesDeepResearch = 0;
     for (let t = 1; t <= 5; t++) {
@@ -139,9 +133,6 @@ describe("G32 & S15 — Débit d'arête : blocage brute-force vs rafales Deep Re
     expect(quarantaine.estEnQuarantaine(ipCloudPartagee, 2_000)).toBe(false);
     expect(rlEchecIp.compteur(ipCloudPartagee)).toBe(0);
 
-    // Résilience aux échecs collatéraux sur IP partagée (S15) : même si un tiers mal configuré
-    // déclenche la quarantaine de l'IP cloud partagée, un titulaire actif déjà authentifié
-    // (empreinte connue) franchit la pré-auth pour atteindre D1, tandis qu'un jeton inconnu est bloqué.
     const jetonConfrereActif = frapperJeton();
     quarantaine.marquerEmpreinteValide(await empreinte(jetonConfrereActif), 3_000);
     quarantaine.placerEnQuarantaine(ipCloudPartagee, 3_000);
@@ -166,8 +157,6 @@ describe("G32 & S15 — Débit d'arête : blocage brute-force vs rafales Deep Re
       }),
     ).toBe(false);
 
-    // Coexistence Phase 3a & veille CI : un secret partagé de 64 car. hex (openssl rand -hex 32)
-    // validé via ouvrirPrincipal alimente aussi le laissez-passer sur IP cloud en quarantaine :
     const secretHex64 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
     const porteDual: Porte = {
       mount: "/mcp",
@@ -209,8 +198,6 @@ describe("G32 & S15 — Débit d'arête : blocage brute-force vs rafales Deep Re
       }),
     ).toBe(false);
 
-    // Révocation en cours de session : dès le premier échec d'authentification dans D1,
-    // enregistrerEchecAuth évince immédiatement l'empreinte du laissez-passer pré-D1 (G32) :
     await enregistrerEchecAuth({
       ip: ipCloudPartagee,
       quarantaine,
@@ -411,7 +398,6 @@ describe("G13, G18, G25 & modes d'admission — Garde statique du schéma SQL et
     expect(verifierCouvertureRetentionSchema(schemaPersonnalise)).toEqual([]);
     expect(() => construireSchemaIdentiteD1(["MAUVAIS NOM!"])).toThrow();
 
-    // Porte G18 : toute table SQL sans rétention déclarée ou entrée orpheline est détectée :
     const sqlTableSansRetention = `${SQL_SCHEMA_IDENTITE_D1}\nCREATE TABLE table_oubliee (id TEXT PRIMARY KEY);`;
     expect(
       verifierCouvertureRetentionSchema(sqlTableSansRetention).some((a) =>
@@ -430,8 +416,6 @@ describe("G13, G18, G25 & modes d'admission — Garde statique du schéma SQL et
       ]).some((a) => a.includes("table_fantome")),
     ).toBe(true);
 
-    // Modes d'admission (fermé par défaut) :
-    expect(MODE_ADMISSION_PAR_DEFAUT).toBe("invitation");
     expect(resoudreModeAdmission("invitation")).toBe("invitation");
     expect(resoudreModeAdmission(" OUVERT ")).toBe("ouvert");
     expect(resoudreModeAdmission("ferme")).toBe("ferme");
@@ -440,7 +424,6 @@ describe("G13, G18, G25 & modes d'admission — Garde statique du schéma SQL et
     expect(resoudreModeAdmission("inconnu")).toBe("ferme");
     expect(resoudreModeAdmission(42)).toBe("ferme");
 
-    // S20 / G18 : chaque purgeCode non déclaratif de POLITIQUES_RETENTION_IDENTITE correspond à une vraie fonction exportée :
     const exportsGouverne = moduleGouverne as Record<string, unknown>;
     for (const pol of POLITIQUES_RETENTION_IDENTITE) {
       if (pol.mode !== "configuration_service") {
@@ -500,7 +483,6 @@ describe("G13, G18, G25 & modes d'admission — Garde statique du schéma SQL et
       ),
     ).toBe(true);
 
-    // Table STRICT / WITHOUT ROWID ou sans point-virgule final, ou nom quoté :
     const contournementSyntaxe = `
       CREATE TABLE "trace_strict" (
         titulaire_id TEXT NOT NULL,
@@ -512,7 +494,6 @@ describe("G13, G18, G25 & modes d'admission — Garde statique du schéma SQL et
       verifierSchemaSansContenuIdentifiant(contournementSyntaxe).some((v) => v.includes("G13")),
     ).toBe(true);
 
-    // Table de requêtes au jour sans identité (violation S13 : zéro journalisation de contenu) :
     const requetesAuJour = `
       CREATE TABLE requetes_jour (
         id INTEGER PRIMARY KEY,
@@ -524,7 +505,6 @@ describe("G13, G18, G25 & modes d'admission — Garde statique du schéma SQL et
       verifierSchemaSansContenuIdentifiant(requetesAuJour).some((v) => v.includes("S13/G13")),
     ).toBe(true);
 
-    // Parenthèse fermante dans un littéral SQL avant une colonne fautive (anti-troncature DDL) :
     const parentheseDansLitteral = `
       CREATE TABLE evenement_technique (
         id INTEGER PRIMARY KEY,
@@ -537,7 +517,6 @@ describe("G13, G18, G25 & modes d'admission — Garde statique du schéma SQL et
       verifierSchemaSansContenuIdentifiant(parentheseDansLitteral).some((v) => v.includes("query")),
     ).toBe(true);
 
-    // Colonne SQLite non typée (affinité BLOB/NONE acceptant du texte arbitraire) :
     const colonneNonTypee = `
       CREATE TABLE evenement_technique (
         id INTEGER PRIMARY KEY,
@@ -549,7 +528,6 @@ describe("G13, G18, G25 & modes d'admission — Garde statique du schéma SQL et
       verifierSchemaSansContenuIdentifiant(colonneNonTypee).some((v) => v.includes("G13")),
     ).toBe(true);
 
-    // Contournements adversariaux de CHECK IN (NOT IN, tautologie 1 IN (1) OR ...) et types JSON/STRING/BLOB :
     for (const contournementG13 of [
       `CREATE TABLE evenement_technique (id INTEGER PRIMARY KEY, titulaire_id TEXT NOT NULL, detail_libre TEXT CHECK (detail_libre NOT IN ('')));`,
       `CREATE TABLE evenement_technique (id INTEGER PRIMARY KEY, titulaire_id TEXT NOT NULL, detail_libre TEXT CHECK (1 IN (1) OR length(detail_libre) > 0));`,
@@ -563,7 +541,6 @@ describe("G13, G18, G25 & modes d'admission — Garde statique du schéma SQL et
       ).toBe(true);
     }
 
-    // Horodatage sous-journalier nommé created_at sur une table anonyme à texte libre (G25) :
     const tableAnonymeCreatedAt = `
       CREATE TABLE trace_anonyme (
         id INTEGER PRIMARY KEY,
@@ -588,7 +565,6 @@ describe("G13, G18, G25 & modes d'admission — Garde statique du schéma SQL et
       )
       .run();
 
-    // Contraintes CHECK (PKCE, format canonique des horodatages) et FOREIGN KEY réellement actives dans SQLite/D1 :
     await expect(
       db
         .prepare(
@@ -599,7 +575,6 @@ describe("G13, G18, G25 & modes d'admission — Garde statique du schéma SQL et
         .run(),
     ).rejects.toThrow();
 
-    // Horodatages non canoniques rejetés dès l'écriture par CHECK GLOB (protège les purges B-tree et S13) :
     await expect(
       db
         .prepare(
@@ -646,7 +621,6 @@ describe("G13, G18, G25 & modes d'admission — Garde statique du schéma SQL et
         .run(),
     ).rejects.toThrow();
 
-    // ON CONFLICT(titulaire_id, jour, classe) DO UPDATE cumule sans écraser les colonnes voisines ni planter sur NaN :
     await incrementerCompteurJourD1(db, {
       titulaireId: "tit_d1",
       jour: "2026-11-18",
@@ -679,11 +653,10 @@ describe("G13, G18, G25 & modes d'admission — Garde statique du schéma SQL et
       .first<{ appels: number; erreurs: number; introuvables: number; sortants: number }>();
     expect(ligneSortant).toEqual({ appels: 2, erreurs: 1, introuvables: 1, sortants: 2 });
 
-    // Insertion et purge réelle à 90 jours (G16) + vérification d'usage de l'index et_par_minute :
     for (const d of [
-      new Date("2026-08-19T11:59:00Z"), // > 90j -> supprimé
-      new Date("2026-08-20T12:00:00Z"), // == 90j exact (minute < seuil est faux) -> conservé
-      new Date("2026-11-18T11:55:00Z"), // récent -> conservé
+      new Date("2026-08-19T11:59:00Z"),
+      new Date("2026-08-20T12:00:00Z"),
+      new Date("2026-11-18T11:55:00Z"),
     ]) {
       await ecrireEvenementTechniqueD1(
         db,
@@ -723,7 +696,6 @@ describe("G13, G18, G25 & modes d'admission — Garde statique du schéma SQL et
 
     const maitre = "maitre-coffre-test-d1-au-moins-32-caracteres-solides";
 
-    // 1. Anti-squattage : un tiers soumet le numero_membre public '555555-5' sans vérifier le courriel.
     await db
       .prepare(
         `INSERT INTO invitation_acces (id, empreinte_code, cohorte, cree_le, expire_le)
@@ -746,7 +718,6 @@ describe("G13, G18, G25 & modes d'admission — Garde statique du schéma SQL et
       )
       .run();
 
-    // Le vrai professionnel soumet le MÊME numero_membre avec son vrai courriel (aucun blocage UNIQUE en sas !) :
     const enveloppeCandidat = await scellerCoffre("cle-fournisseur-16c9", {
       titulaireId: "tit_vrai_555",
       usage: "fournisseur_a",
@@ -771,7 +742,6 @@ describe("G13, G18, G25 & modes d'admission — Garde statique du schéma SQL et
       )
       .run();
 
-    // Contrainte CHECK atomique sur les colonnes coffre_* de demande_acces :
     await expect(
       db
         .prepare(
@@ -783,7 +753,6 @@ describe("G13, G18, G25 & modes d'admission — Garde statique du schéma SQL et
         .run(),
     ).rejects.toThrow();
 
-    // Promotion du vrai membre après clic sur son courriel vérifié (rattache aussi invitation_acces.titulaire_id) :
     await db.batch([
       db.prepare(
         `INSERT INTO titulaire (
@@ -811,7 +780,6 @@ describe("G13, G18, G25 & modes d'admission — Garde statique du schéma SQL et
       ),
     ]);
 
-    // 2. Détection de clé partagée en cabinet sans blocage UNIQUE (coffre_clef.empreinte_clef + cc_par_empreinte) :
     const enveloppeCollegue = await scellerCoffre("cle-fournisseur-16c9", {
       titulaireId: "tit_collegue_556",
       usage: "fournisseur_a",
@@ -859,7 +827,6 @@ describe("G13, G18, G25 & modes d'admission — Garde statique du schéma SQL et
       .all<Record<string, unknown>>();
     expect(JSON.stringify(planEmpreinteCoffre.results)).toContain("cc_par_empreinte");
 
-    // 3. Purges complètes de rétention (demande_acces, invitation_acces, session_portail, code_oauth, compteur_jour, evenement_technique) :
     await db
       .prepare(
         `INSERT INTO demande_acces (
@@ -901,7 +868,6 @@ describe("G13, G18, G25 & modes d'admission — Garde statique du schéma SQL et
       minuteEvenementsSeuil: "2026-08-20T12:00",
     });
 
-    // Vérification des lignes survivantes après purge :
     const demandesRestantes = await db
       .prepare("SELECT id FROM demande_acces ORDER BY id ASC")
       .all<{ id: string }>();
@@ -910,7 +876,6 @@ describe("G13, G18, G25 & modes d'admission — Garde statique du schéma SQL et
     const invitationsRestantes = await db
       .prepare("SELECT id FROM invitation_acces ORDER BY id ASC")
       .all<{ id: string }>();
-    // Seule l'invitation rattachée au titulaire promu survit ; toute invitation expirée sans titulaire_id (même consommée) est purgée :
     expect(invitationsRestantes.results.map((r) => r.id)).toEqual(["inv_active"]);
 
     const sessionsRestantes = await db
@@ -930,7 +895,6 @@ describe("G13, G18, G25 & modes d'admission — Garde statique du schéma SQL et
       .all<{ jour: string }>();
     expect(joursCompteursRestants.results.map((r) => r.jour)).toEqual(["2026-08-20", "2026-11-18"]);
 
-    // Vérification EXPLAIN QUERY PLAN : chaque requête de purge exploite son index dédié (zéro SCAN table) :
     const verificationsPlans: Array<{ sql: string; arg: string; indexAttendu: string }> = [
       {
         sql: "EXPLAIN QUERY PLAN DELETE FROM compteur_jour WHERE jour < ?1",
@@ -986,7 +950,6 @@ describe("G13, G18, G25 & modes d'admission — Garde statique du schéma SQL et
       expect(textePlan, `${v.sql} -> ${v.indexAttendu}`).toContain(v.indexAttendu);
     }
 
-    // 4. Retrait unitaire d'une entrée de coffre et suppression complète d'un compte titulaire (cascade FK réelle sur D1) :
     await retirerEntreeCoffreD1(db, "tit_collegue_556", "fournisseur_a");
     expect(
       await db

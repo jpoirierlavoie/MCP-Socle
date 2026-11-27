@@ -1,25 +1,6 @@
-/**
- * Enveloppe JSON-RPC 2.0 du point d'entrée MCP.
- *
- * Transport Streamable HTTP SANS ÉTAT : un message JSON-RPC par POST, une réponse par
- * requête. Aucun `Mcp-Session-Id`, aucun message initié par le serveur. Ce qui fut le pari
- * D3 du connecteur « Jurisprudence » est devenu la norme avec la révision `2026-07-28`.
- *
- * Les lots (tableaux) sont refusés : le regroupement a été retiré de la révision
- * `2025-06-18`, et aucun client connu n'en émet.
- *
- * Repris de `MCP-Jurisprudence`, puis étendu pour servir les deux dépôts.
- */
-
 export const PARSE_ERROR = -32700;
 export const INVALID_REQUEST = -32600;
 export const METHOD_NOT_FOUND = -32601;
-/**
- * ⚠ EXPORTÉ ET DÉLIBÉRÉMENT INEMPLOYÉ. Un échec de validation d'arguments n'est PAS une
- * erreur de protocole ici : c'est un résultat d'outil `isError: true` (voir `err()`).
- * La constante reste pour que l'écart avec les implémentations qui lèvent `INVALID_PARAMS`
- * demeure visible plutôt que d'être redécouvert.
- */
 export const INVALID_PARAMS = -32602;
 export const INTERNAL_ERROR = -32603;
 
@@ -32,7 +13,6 @@ export interface JsonRpcMessage {
   params?: Record<string, unknown>;
 }
 
-/** Erreur de PROTOCOLE. Réservée aux fautes de forme — voir la note sur `err()`. */
 export class JsonRpcError extends Error {
   readonly code: number;
   readonly requestId: RequestId;
@@ -72,12 +52,6 @@ function idValide(m: Record<string, unknown>): RequestId {
   return null;
 }
 
-/**
- * Analyse et valide structurellement UN message JSON-RPC 2.0.
- *
- * Ne fait que valider la forme : la détection des notifications (absence d'`id`) revient à
- * l'appelant.
- */
 export function parseMessage(raw: string): JsonRpcMessage {
   let message: unknown;
   try {
@@ -140,51 +114,17 @@ export function parseMessage(raw: string): JsonRpcMessage {
   };
 }
 
-/** Un message sans `id` (ou avec un `id` nul) est une notification. */
 export function isNotification(m: JsonRpcMessage): boolean {
   return m.id === undefined || m.id === null;
 }
 
-// ── Enveloppe des résultats d'outils ────────────────────────────────────────────────────
-
 export interface ToolResult {
   content: Array<{ type: "text"; text: string }>;
   isError: boolean;
-  /**
-   * Charge utile typée, telle que l'outil la pose. SANS contrat publié.
-   *
-   * ⚠ OPTIONNEL, ET CE N'EST PAS UN DÉTAIL. Le champ existe pour une seule raison :
-   *   `legislation` émet une charge structurée plate sur ses dix outils depuis bien avant
-   *   le socle, et doit continuer à l'émettre À L'IDENTIQUE.
-   *
-   *   Il ne porte AUCUN contrat. Aucun `outputSchema` n'est publié, et le socle n'offre
-   *   plus d'enveloppe — voir S5, ABANDONNÉE le 2026-09-17 sur mesure : publier les
-   *   schémas coûtait ~7 700 jetons par session à `legislation` pour servir un lecteur de
-   *   schémas qui n'existe pas, le lecteur réel étant un modèle qui lit la prose.
-   *
-   *   Conséquence pour `jurisprudence` : il ne met RIEN ici, et c'est son invariant 4 qui
-   *   l'exige — invariant réexaminé deux fois, maintenu deux fois, et que la mesure a fini
-   *   par confirmer. Deux de ses tests l'épinglent sur les sorties réelles.
-   */
   structuredContent?: Record<string, unknown>;
 }
 
-/**
- * Sortie normale d'un outil : de la PROSE, dans la langue du destinataire.
- *
- * ⚠ LA CHARGE STRUCTURÉE EST ACCEPTÉE, LA SORTIE DOUBLE N'EST PAS LIVRÉE. Le second
- *   argument existe pour que `legislation` continue d'émettre ce qu'il émet déjà ; il
- *   n'est pas l'arrivée de S5, qui exige en outre un `outputSchema` publié par outil et
- *   une enveloppe dont `gardes` est non vide par obligation de compilation (marche 4).
- *   Le renversement de doctrine porte sur des décisions écrites et réexaminées dans les
- *   deux connecteurs : il se fera par décision, jamais par glissement.
- *
- *   Ce que le socle peut fournir au besoin reste une enveloppe applicative explicite, sans
- *   gonfler `tools/list` avec un `outputSchema` inutile.
- */
 export function ok(text: string, structured?: Record<string, unknown>): ToolResult {
-  // La clef n'apparaît QUE si une charge non vide est fournie : sans elle, la sortie reste
-  // exactement `{ content, isError }`, ce qu'un test du socle épingle.
   return {
     content: [{ type: "text", text }],
     isError: false,
@@ -192,15 +132,6 @@ export function ok(text: string, structured?: Record<string, unknown>): ToolResu
   };
 }
 
-/**
- * Erreur d'EXÉCUTION d'un outil.
- *
- * ⚠ TOUTE erreur d'exécution — validation des arguments comprise — est un RÉSULTAT d'outil
- *   `isError: true`, jamais une erreur JSON-RPC. Les erreurs JSON-RPC restent réservées aux
- *   fautes de protocole : méthode inconnue, JSON illisible, lot. C'est ce que prescrit la
- *   spécification MCP, et le motif est opérationnel : le modèle doit pouvoir LIRE l'erreur
- *   et se corriger, ce qu'une erreur de transport ne lui permet pas.
- */
 export function err(text: string): ToolResult {
   return { content: [{ type: "text", text }], isError: true };
 }

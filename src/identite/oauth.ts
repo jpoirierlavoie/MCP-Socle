@@ -1,37 +1,14 @@
-/**
- * Primitives OAuth 2.1, métadonnées de ressource protégée (RFC 9728), métadonnées de serveur
- * d'autorisation (RFC 8414), PKCE `S256` (RFC 7636) et validation anti-SSRF des identifiants de
- * client par document de métadonnées (CIMD).
- *
- * Ces primitives alimentent la monture `/mcp/oauth` des connecteurs et le serveur d'autorisation
- * dédié (`acces.poirierlavoie.ca`), requis par Gemini App (`gemini.google.com`), Gemini Enterprise
- * (Vertex AI) et l'ouverture multilocataire de Claude Research (`claude.ai`).
- */
-
-import { memeSecret, sansBarresFinales } from "./porteur";
+import { repondreDocumentJsonPublic } from "../protocole/http";
+import { encoderBase64Url, memeSecret, sansBarresFinales } from "./porteur";
 import { PORTEE_UNIVERSELLE } from "./titulaire";
 
 export const CHEMIN_RESSOURCE_PROTEGEE = "/.well-known/oauth-protected-resource";
 export const CHEMIN_SERVEUR_AUTORISATION = "/.well-known/oauth-authorization-server";
 export const METHODE_PKCE_S256 = "S256";
 
-/** URIs de rappel officielles d'Anthropic pour les connecteurs distants Claude / Claude Research. */
 export const URIS_REDIRECTION_CLAUDE = [
   "https://claude.ai/api/mcp/auth_callback",
   "https://claude.com/api/mcp/auth_callback",
-] as const;
-
-/** URIs de rappel connues de Google Cloud / Vertex AI / Antigravity pour connecteurs OAuth. */
-export const URIS_REDIRECTION_GOOGLE_CONNUES = [
-  "https://vertexaisearch.cloud.google.com/oauth-redirect",
-  "https://vertexaisearch.cloud.google.com/console/oauth/default_oauth.html",
-  "https://antigravity.google/oauth-callback",
-  "https://antigravity.google.com/oauth/callback",
-] as const;
-
-/** URI de rappel stable OpenAI / ChatGPT lorsque RFC 9207 `iss` est annoncé. */
-export const URIS_REDIRECTION_OPENAI_CONNUES = [
-  "https://chatgpt.com/connector_platform_oauth_redirect",
 ] as const;
 
 export const CHEMINS_BOUCLE_LOCALE_PAR_DEFAUT = [
@@ -42,10 +19,11 @@ export const CHEMINS_BOUCLE_LOCALE_PAR_DEFAUT = [
   "/auth/callback",
 ] as const;
 
-function contientControleOuEspaceUrl(brut: string): boolean {
+function contientCaracteresInterdits(brut: string, rejeterEspace = false): boolean {
+  const seuilBas = rejeterEspace ? 0x20 : 0x1f;
   for (let i = 0; i < brut.length; i++) {
     const code = brut.charCodeAt(i);
-    if (code <= 0x20 || code === 0x7f) return true;
+    if (code <= seuilBas || code === 0x7f) return true;
   }
   return false;
 }
@@ -72,13 +50,9 @@ function aPortExpliciteDansAutorite(uriBrute: string): boolean {
 }
 
 export interface OptionsRessourceProtegee {
-  /** URL canonique HTTPS de la ressource MCP protégée (ex. `https://hote/mcp/oauth`). */
   resource: string;
-  /** Serveurs d'autorisation habilités (ex. `["https://acces.poirierlavoie.ca"]`). */
   authorizationServers: readonly string[];
-  /** Portées prises en charge par cette ressource. */
   scopesSupported?: readonly string[];
-  /** URL publique de documentation de la ressource. */
   resourceDocumentation?: string;
 }
 
@@ -91,7 +65,7 @@ export interface MetadonneesRessourceProtegee {
 }
 
 function parserUrlHttpsPropre(brut: string, libelle: string): URL {
-  if (typeof brut !== "string" || brut.length === 0 || contientControleOuEspaceUrl(brut)) {
+  if (typeof brut !== "string" || brut.length === 0 || contientCaracteresInterdits(brut, true)) {
     throw new Error(`URL « ${libelle} » invalide.`);
   }
   let u: URL;
@@ -109,17 +83,6 @@ function parserUrlHttpsPropre(brut: string, libelle: string): URL {
   return u;
 }
 
-/**
- * Calcule l'URL canonique RFC 9728 §3.1 du document de métadonnées d'une ressource protégée
- * (`https://<hote>/.well-known/oauth-protected-resource<chemin>`).
- */
-export function urlMetadonneesRessource(resourceUrl: string): string {
-  const u = parserUrlHttpsPropre(resourceUrl, "resource");
-  const chemin = u.pathname === "/" ? "" : sansBarresFinales(u.pathname);
-  return `${u.origin}${CHEMIN_RESSOURCE_PROTEGEE}${chemin}`;
-}
-
-/** Construit le document JSON RFC 9728 d'une ressource MCP protégée par OAuth 2.1. */
 export function construireRessourceProtegee(
   options: OptionsRessourceProtegee,
 ): MetadonneesRessourceProtegee {
@@ -148,7 +111,6 @@ export function construireRessourceProtegee(
 }
 
 export interface OptionsServeurAutorisation {
-  /** Émetteur canonique HTTPS sans chemin de requête (ex. `https://acces.poirierlavoie.ca`). */
   issuer: string;
   authorizationEndpoint?: string;
   tokenEndpoint?: string;
@@ -182,7 +144,6 @@ export interface MetadonneesServeurAutorisation {
   service_documentation?: string;
 }
 
-/** Construit le document JSON RFC 8414 / OAuth 2.1 du serveur d'autorisation. */
 export function construireServeurAutorisation(
   options: OptionsServeurAutorisation,
 ): MetadonneesServeurAutorisation {
@@ -245,69 +206,32 @@ export function construireServeurAutorisation(
   return meta;
 }
 
-function repondreDocumentDecouverteOAuth(
-  method: string,
-  document: unknown,
-  options: { cacheMaxAge?: number } = {},
-): Response {
-  if (method === "OPTIONS") {
-    return new Response(null, {
-      status: 204,
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
-        "Access-Control-Allow-Headers": "Accept, Content-Type, MCP-Protocol-Version",
-        "Access-Control-Max-Age": "86400",
-      },
-    });
-  }
-  if (method !== "GET" && method !== "HEAD") {
-    return new Response(JSON.stringify({ error: "method_not_allowed" }), {
-      status: 405,
-      headers: {
-        "Content-Type": "application/json; charset=utf-8",
-        Allow: "GET, HEAD, OPTIONS",
-        "Access-Control-Allow-Origin": "*",
-      },
-    });
-  }
-  const maxAge = options.cacheMaxAge ?? 600;
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json; charset=utf-8",
-    "Cache-Control": `public, max-age=${maxAge}`,
-    "X-Content-Type-Options": "nosniff",
-    "Access-Control-Allow-Origin": "*",
-  };
-  return method === "HEAD"
-    ? new Response(null, { status: 200, headers })
-    : new Response(JSON.stringify(document), { status: 200, headers });
-}
-
-/** Sert une fiche RFC 9728 (`GET`, `HEAD`, `OPTIONS`, `405` ailleurs). */
 export function repondreRessourceProtegee(
   method: string,
   meta: MetadonneesRessourceProtegee,
   options?: { cacheMaxAge?: number },
 ): Response {
-  return repondreDocumentDecouverteOAuth(method, meta, options);
+  return repondreDocumentJsonPublic(method, meta, {
+    cacheMaxAge: options?.cacheMaxAge,
+    allowHeaders: "Accept, Content-Type, MCP-Protocol-Version",
+  });
 }
 
-/** Sert une fiche RFC 8414 (`GET`, `HEAD`, `OPTIONS`, `405` ailleurs). */
 export function repondreServeurAutorisation(
   method: string,
   meta: MetadonneesServeurAutorisation,
   options?: { cacheMaxAge?: number },
 ): Response {
-  return repondreDocumentDecouverteOAuth(method, meta, options);
+  return repondreDocumentJsonPublic(method, meta, {
+    cacheMaxAge: options?.cacheMaxAge,
+    allowHeaders: "Accept, Content-Type, MCP-Protocol-Version",
+  });
 }
-
-// ── PKCE S256 (RFC 7636 + OAuth 2.1) ────────────────────────────────────────────────────
 
 const MOTIF_VERIFICATEUR_PKCE = /^[A-Za-z0-9._~-]{43,128}$/;
 const MOTIF_DEFI_PKCE_S256 = /^[A-Za-z0-9_-]{43}$/;
 const DEFI_PKCE_FACTICE = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
-/** Vérifie la conformité syntaxique stricte d'un `code_verifier` RFC 7636 §4.1 (43 à 128 car.). */
 export function estVerificateurPkceValide(codeVerifier: string): boolean {
   return (
     codeVerifier.length >= 43 &&
@@ -316,22 +240,14 @@ export function estVerificateurPkceValide(codeVerifier: string): boolean {
   );
 }
 
-/** Calcule le `code_challenge` PKCE `S256` (`BASE64URL(SHA-256(ASCII(code_verifier)))`). */
 export async function calculerDefiPkceS256(codeVerifier: string): Promise<string> {
   if (!estVerificateurPkceValide(codeVerifier)) {
     throw new Error("code_verifier PKCE non conforme à RFC 7636 §4.1.");
   }
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(codeVerifier));
-  const octets = new Uint8Array(digest);
-  let binaire = "";
-  for (const o of octets) binaire += String.fromCharCode(o);
-  return btoa(binaire).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  return encoderBase64Url(new Uint8Array(digest));
 }
 
-/**
- * Vérifie à temps constant un couple `(code_verifier, code_challenge)` sous la seule méthode
- * autorisée `S256` (OAuth 2.1 interdit `plain`).
- */
 export async function verifierDefiPkceS256(
   codeVerifier: string,
   codeChallengeAttendu: string,
@@ -349,14 +265,9 @@ export async function verifierDefiPkceS256(
   return await memeSecret(calcule, codeChallengeAttendu);
 }
 
-// ── Validation des URIs de redirection et CIMD (anti-SSRF) ──────────────────────────────
-
 export interface OptionsValidationRedirection {
-  /** Liste blanche d'URIs HTTPS exactes autorisées (ex. `URIS_REDIRECTION_CLAUDE` + Google/Vertex). */
   urisExactesAutorisees?: readonly string[];
-  /** Autoriser les rappels de boucle locale RFC 8252 §7.3 (`127.0.0.1`, `[::1]`, `localhost`). */
   autoriserBoucleLocale?: boolean;
-  /** Chemins exacts admis sur la boucle locale. Défaut : `CHEMINS_BOUCLE_LOCALE_PAR_DEFAUT`. */
   cheminsBoucleLocale?: readonly string[];
 }
 
@@ -384,10 +295,7 @@ function contientSegmentParent(uriBrute: string, pathname: string): boolean {
       if (decode === "." || decode === ".." || decode.includes("/") || decode.includes("\\")) {
         return true;
       }
-      for (let i = 0; i < decode.length; i++) {
-        const code = decode.charCodeAt(i);
-        if (code < 0x20 || code === 0x7f) return true;
-      }
+      if (contientCaracteresInterdits(decode)) return true;
     } catch {
       return true;
     }
@@ -399,11 +307,6 @@ function estHoteBoucleLocale(hostname: string): boolean {
   return hostname === "127.0.0.1" || hostname === "[::1]" || hostname === "localhost";
 }
 
-/**
- * Vérifie qu'une `redirect_uri` OAuth 2.1 est sûre et correspond soit par égalité stricte
- * caractère pour caractère à une URI HTTPS enregistrée (OAuth 2.1 §4.1.3), soit à une boucle
- * locale RFC 8252 explicitement permise.
- */
 export function estUriRedirectionAutorisee(
   uri: string,
   options: OptionsValidationRedirection = {},
@@ -412,7 +315,7 @@ export function estUriRedirectionAutorisee(
     typeof uri !== "string" ||
     uri.length === 0 ||
     uri.length > 512 ||
-    contientControleOuEspaceUrl(uri)
+    contientCaracteresInterdits(uri, true)
   ) {
     return false;
   }
@@ -468,8 +371,6 @@ const SUFFIXES_HOTE_INTERDITS_CIMD = [
 
 function estHoteInterditPourCimd(hostname: string): boolean {
   const h = hostname.toLowerCase();
-  // Un point final FQDN (`localhost.`, `127.0.0.1.`, `interne.local.`) contournerait les
-  // comparaisons de suffixes s'il n'était rejeté d'emblée.
   if (h.endsWith(".")) {
     return true;
   }
@@ -480,28 +381,18 @@ function estHoteInterditPourCimd(hostname: string): boolean {
   ) {
     return true;
   }
-  // WHATWG `new URL()` normalise toute adresse IPv6 entre crochets et toute adresse IPv4
-  // (décimale, octale ou hexadécimale) en notation décimale pointée canonique : refuser tout
-  // littéral IP élimine d'un bloc les contournements SSRF (`127.0.0.1`, `169.254.169.254`,
-  // `[::1]`, `[::ffff:127.0.0.1]`, identifiants de zone `%25`, etc.).
   if (h.startsWith("[") || h.endsWith("]") || MOTIF_IPV4_CANONIQUE.test(h)) {
     return true;
   }
   return false;
 }
 
-/**
- * Valide un identifiant de client par document de métadonnées (CIMD) avant toute résolution
- * distante par le serveur d'autorisation : HTTPS obligatoire, sans espace ni caractère de
- * contrôle, sans port explicite ni chaîne de requête, nom de domaine public (aucun littéral
- * IPv4/IPv6 ni domaine local/spécial), chemin non vide distinct de `/`, sans fragment ni `..`.
- */
 export function estClientIdMetadonneesValide(clientId: string): boolean {
   if (
     typeof clientId !== "string" ||
     clientId.length === 0 ||
     clientId.length > 512 ||
-    contientControleOuEspaceUrl(clientId)
+    contientCaracteresInterdits(clientId, true)
   ) {
     return false;
   }
@@ -549,7 +440,7 @@ function estUriRedirectionCimdValide(uri: string, autoriserBoucleLocale: boolean
     typeof uri !== "string" ||
     uri.length === 0 ||
     uri.length > 512 ||
-    contientControleOuEspaceUrl(uri)
+    contientCaracteresInterdits(uri, true)
   ) {
     return false;
   }
@@ -570,11 +461,6 @@ function estUriRedirectionCimdValide(uri: string, autoriserBoucleLocale: boolean
   return false;
 }
 
-/**
- * Valide hors réseau le document JSON d'un client CIMD récupéré via `fetch(clientId, { redirect: "manual" })` :
- * concordance exacte de `client_id`, interdiction de tout secret symétrique (`client_secret*`) et
- * validation stricte du tableau `redirect_uris`.
- */
 export function validerMetadonneesClientCimd(
   clientIdAttendu: string,
   document: unknown,
@@ -689,20 +575,6 @@ export type ResultatValidationInscriptionDcr =
       readonly motif: string;
     };
 
-function contientControleTexte(brut: string): boolean {
-  for (let i = 0; i < brut.length; i++) {
-    const code = brut.charCodeAt(i);
-    if (code < 0x20 || code === 0x7f) return true;
-  }
-  return false;
-}
-
-/**
- * Valide hors réseau une requête RFC 7591 d'inscription dynamique de client (`POST /oauth/register`)
- * en bloquant toute URI non sécurisée / SSRF (`invalid_redirect_uri`) et en bornant strictement
- * les métadonnées admises (PKCE `authorization_code` + `code` uniquement ; `"refresh_token"` éventuel
- * dans la demande est toléré sans être réémis).
- */
 export function validerMetadonneesInscriptionDcr(
   document: unknown,
   options: { autoriserBoucleLocale?: boolean } = {},
@@ -798,7 +670,7 @@ export function validerMetadonneesInscriptionDcr(
 
   let clientName: string | undefined;
   if (Object.hasOwn(doc, "client_name") && doc.client_name !== undefined) {
-    if (typeof doc.client_name !== "string" || contientControleTexte(doc.client_name)) {
+    if (typeof doc.client_name !== "string" || contientCaracteresInterdits(doc.client_name)) {
       return {
         ok: false,
         codeErreur: "invalid_client_metadata",
@@ -851,13 +723,6 @@ function extraireServicesTriesValides(servicesConnus: readonly string[]): string
   return [...uniques].sort();
 }
 
-/**
- * Calcule la liste ordonnée et sans doublon de toutes les valeurs canoniques admises pour la
- * colonne `portee` de `DB_IDENTITE` (`jeton` et `code_oauth`) : `les_deux` suivi de tous les
- * sous-ensembles propres non vides triés lexicographiquement (par taille croissante puis ordre
- * ASCII), garantissant une concordance exacte entre `normaliserPorteeOAuth` et la contrainte SQL
- * `CHECK (portee IN (...))` quel que soit le nombre de services ($1 \le N \le 8$).
- */
 export function porteesCanoniques(servicesConnus: readonly string[]): string[] {
   const services = extraireServicesTriesValides(servicesConnus);
   if (services.length === 1) {
@@ -882,12 +747,6 @@ export function porteesCanoniques(servicesConnus: readonly string[]): string[] {
   return [PORTEE_UNIVERSELLE, ...sousEnsemblesParTaille.flat()];
 }
 
-/**
- * Normalise le paramètre `scope` OAuth 2.1 (séparé par espaces, RFC 6749 §3.3) vers la valeur
- * canonique stockée dans `DB_IDENTITE` (`les_deux` par défaut ou lorsque tous les services connus
- * sont demandés, un sous-ensemble propre trié lexicographiquement sinon, ou `null` sur toute
- * portée ou configuration inconnue).
- */
 export function normaliserPorteeOAuth(
   porteeBrute: string | null | undefined,
   servicesConnus: readonly string[],

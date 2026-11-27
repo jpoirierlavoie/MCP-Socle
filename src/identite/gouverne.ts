@@ -1,40 +1,15 @@
-/**
- * Gouverne à deux étages (débit d'arête adapté aux rafales Deep Research + quotas journaliers D1
- * par classe d'outil) et télémétrie technique strictement dépourvue de contenu (`S13`, `S15`,
- * `S20`, portes `G13`, `G16`, `G25`, `G32`).
- *
- * Particularité Deep Research (`S15` + §2.1) :
- * - Les agents autonomes de recherche approfondie (`claude.ai`, `gemini.google.com`, API Deep
- *   Research) émettent leurs rafales depuis des adresses IP de sortie infonuagiques partagées.
- * - `verifierDebitPreAuth` n'applique en amont de D1 qu'une quarantaine locale des IP ayant déjà
- *   franchi le seuil d'ÉCHECS d'authentification ainsi qu'un plafond de rafale brute par IP élevé
- *   (ex. 600/min), tandis que `enregistrerEchecAuth` n'impute le compteur d'échecs IP (ex. 20/min)
- *   et le disjoncteur global `"echecs"` (ex. 300/min) QUE lorsque l'authentification échoue.
- *   Ainsi, le trafic authentifié légitime ne pénalise jamais l'adresse IP partagée.
- */
-
 import { debitAcceptable, type Limiteur } from "../protocole/http";
 import { clientLisible, type InfoClient } from "../protocole/meta";
 import { err, type ToolResult } from "../protocole/rpc";
 import { porteesCanoniques } from "./oauth";
 import { empreinte, MAX_LONGUEUR_PORTEUR } from "./porteur";
 import { tropDeRequetes } from "./refus";
-import type { BaseD1Minimale, EtatTitulaireServi } from "./titulaire";
-
-// ── Modes d'admission du portail (ouverture par cohorte puis file régulière) ────────────
+import { type BaseD1Minimale, type EtatTitulaireServi, jourUtc } from "./titulaire";
 
 export const MODES_ADMISSION = ["ferme", "invitation", "ouvert"] as const;
 
 export type ModeAdmission = (typeof MODES_ADMISSION)[number];
 
-/** Mode d'admission recommandé au déploiement initial par cohorte contrôlée. */
-export const MODE_ADMISSION_PAR_DEFAUT: ModeAdmission = "invitation";
-
-/**
- * Résout le mode d'admission configuré (`MODE_ADMISSION`).
- *
- * Fermé par défaut : toute valeur absente, non textuelle ou inconnue retombe sur `"ferme"`.
- */
 export function resoudreModeAdmission(brut: unknown): ModeAdmission {
   if (typeof brut !== "string") return "ferme";
   const propre = brut.trim().toLowerCase();
@@ -44,26 +19,18 @@ export function resoudreModeAdmission(brut: unknown): ModeAdmission {
   return "ferme";
 }
 
-// ── Classes d'outils et quotas journaliers (S20 : source unique de vérité) ──────────────
-
 export const CLASSES_OUTIL = ["local", "sortant", "semantique"] as const;
 
 export type ClasseOutil = (typeof CLASSES_OUTIL)[number];
 
 export type PlafondsQuotas = Readonly<Record<ClasseOutil, number>>;
 
-/**
- * Quotas journaliers UTC par défaut pour un titulaire `actif` ou `surveille`.
- * Dimensionnés pour absorber plusieurs sessions de recherche approfondie multi-étapes par jour
- * tout en protégeant les appels API sortants (`200/jour`) et vectoriels (`150/jour`).
- */
 export const QUOTAS_ACTIF_PAR_DEFAUT: PlafondsQuotas = {
   local: 1_500,
   sortant: 200,
   semantique: 150,
 } as const;
 
-/** Quotas journaliers UTC réduits pour un titulaire placé à l'état `limite`. */
 export const QUOTAS_LIMITE_PAR_DEFAUT: PlafondsQuotas = {
   local: 150,
   sortant: 20,
@@ -88,7 +55,6 @@ export type VerdictQuotaJour =
       readonly plafond: number;
     };
 
-/** Renvoie la grille de plafonds journaliers applicable à l'état du titulaire. */
 export function plafondsPourEtat(
   etat: EtatTitulaireServi,
   surcharges?: { actif?: Partial<PlafondsQuotas>; limite?: Partial<PlafondsQuotas> },
@@ -99,10 +65,6 @@ export function plafondsPourEtat(
   return { ...QUOTAS_ACTIF_PAR_DEFAUT, ...(surcharges?.actif ?? {}) };
 }
 
-/**
- * Vérifie le quota journalier d'une classe d'outil une fois le nom d'outil extrait du CORPS
- * JSON-RPC (§4.3 marche 11 : ne jamais décider sur l'en-tête `Mcp-Name` seul).
- */
 export function verifierQuotaJour(
   compteurs: CompteursJour,
   classe: ClasseOutil,
@@ -133,32 +95,18 @@ export function verifierQuotaJour(
   };
 }
 
-/**
- * Construit l'erreur d'outil MCP (`HTTP 200`, `isError: true`) retournée au modèle lorsque le
- * quota journalier d'une classe est atteint (§4.3 marche 11).
- */
 export function erreurQuotaEpuise(classe: ClasseOutil, plafond: number): ToolResult {
   return err(
     `[QUOTA_EPUISE] Le quota journalier UTC pour la classe d'outils « ${classe} » (${plafond} appels/jour) est atteint pour ce compte. Les compteurs sont réinitialisés à 00:00 UTC.`,
   );
 }
 
-// ── Étage 1 : limitation de débit d'arête compatible Deep Research (A1, S15, G32) ───────
-
-/** Capacité bornée de la table de quarantaine IP en mémoire d'isolat (éviction FIFO). */
 export const MAX_ENTREES_QUARANTAINE_IP = 4_096;
 
-/** Durée par défaut de quarantaine locale d'une IP ayant saturé le budget d'échecs : 60 s. */
 export const DUREE_QUARANTAINE_IP_MS = 60_000;
 
-/**
- * Durée par défaut du laissez-passer pré-D1 d'une empreinte SHA-256 récemment authentifiée,
- * protégeant les sessions actives sur IP de sortie infonuagiques partagées (`S15`) sans jamais
- * court-circuiter la vérification D1 elle-même (`ouvrirPrincipal`).
- */
 export const DUREE_LAISSEZ_PASSER_EMPREINTE_MS = 300_000;
 
-/** Clé constante du disjoncteur global d'échecs d'authentification (§6.1). */
 export const CLE_DISJONCTEUR_ECHECS = "echecs";
 
 export interface QuarantaineIpEchecs {
@@ -170,13 +118,6 @@ export interface QuarantaineIpEchecs {
   taille(): number;
 }
 
-/**
- * Crée un cache borné en mémoire d'isolat consignant d'une part les adresses IP qui ont franchi le
- * seuil d'échecs d'authentification (pour couper leurs essais inconnus AVANT toute lecture D1, `G32`)
- * et d'autre part les empreintes SHA-256 récemment validées afin qu'un abus collatéral sur une IP
- * infonuagique partagée (`claude.ai`, `gemini.google.com`) n'interrompe jamais la session d'un
- * titulaire légitime (`S15`).
- */
 export function creerQuarantaineIpEchecs(
   options: {
     maxEntrees?: number;
@@ -246,23 +187,12 @@ export function creerQuarantaineIpEchecs(
 
 export interface OptionsDebitPreAuth {
   ip: string;
-  /** Quarantaine mémoire des IP ayant franchi le seuil d'échecs d'authentification. */
   quarantaine?: QuarantaineIpEchecs;
-  /** Plafond grossier de rafale pré-D1 par IP (ex. 600/min, couvrant les sorties cloud). */
   limiteurRafaleIp?: Limiteur;
-  /**
-   * Porteurs candidats extraits de la requête : si l'un correspond à une empreinte SHA-256
-   * récemment validée, la requête franchit la quarantaine IP pour être vérifiée normalement en D1.
-   */
   candidatsJetons?: readonly string[];
   maintenantMs?: number;
 }
 
-/**
- * Nombre maximal de porteurs candidats inspectés lors du contrôle pré-D1 d'empreinte connue
- * (couvre `Bearer`, `?key=` et les variantes d'encodage de chemin, tant pour les jetons `frapperJeton`
- * de 43 car. que pour les secrets partagés transitoires / CI de 64 car. hexadécimaux).
- */
 export const MAX_CANDIDATS_PORTEUR_PREAUTH = 8;
 
 async function porteEmpreinteConnue(
@@ -283,13 +213,6 @@ async function porteEmpreinteConnue(
   return false;
 }
 
-/**
- * Garde pré-authentification exécutée AVANT toute lecture D1 (`G32`, `S15`).
- *
- * Renvoie `false` si l'IP est en quarantaine d'échecs ou dépasse le plafond brut de rafale, SAUF
- * lorsque le porteur soumis correspond à une empreinte SHA-256 récemment authentifiée sur l'isolat
- * (laquelle poursuivra néanmoins son contrôle complet de révocation/état dans `ouvrirPrincipal`).
- */
 export async function verifierDebitPreAuth(options: OptionsDebitPreAuth): Promise<boolean> {
   const ip = options.ip.trim() || "sans-ip";
   const enQuarantaine = options.quarantaine?.estEnQuarantaine(ip, options.maintenantMs) ?? false;
@@ -314,25 +237,12 @@ export async function verifierDebitPreAuth(options: OptionsDebitPreAuth): Promis
 export interface OptionsEchecAuth {
   ip: string;
   quarantaine?: QuarantaineIpEchecs;
-  /** Limiteur d'arête strict sur les ÉCHECS par IP (ex. 20/min). */
   limiteurEchecIp?: Limiteur;
-  /** Disjoncteur global d'échecs distribués sur clé constante `"echecs"` (ex. 300/min). */
   limiteurEchecsGlobal?: Limiteur;
-  /**
-   * Porteurs soumis lors de l'échec : toute empreinte SHA-256 correspondante est immédiatement
-   * évincée du laissez-passer pré-D1 afin qu'un jeton compromis/révoqué ne contourne plus la
-   * quarantaine IP (`G32`).
-   */
   candidatsJetons?: readonly string[];
   maintenantMs?: number;
 }
 
-/**
- * Enregistre un ÉCHEC d'authentification : évince immédiatement les porteurs soumis du
- * laissez-passer d'empreintes actives, puis incrémente le compteur d'échecs de l'IP appelante
- * (et la place en quarantaine pré-D1 si le seuil de 20/min est franchi) ainsi que le disjoncteur
- * global `"echecs"`. N'est JAMAIS appelée sur une requête authentifiée avec succès (`S15`).
- */
 export async function enregistrerEchecAuth(options: OptionsEchecAuth): Promise<{
   ipQuarantaine: boolean;
   disjoncteurGlobal: boolean;
@@ -371,11 +281,6 @@ export interface OptionsDebitTitulaire {
   retryAfterLimiteSec?: number;
 }
 
-/**
- * Contrôle le débit d'arête post-authentification par `titulaireId` (jamais par IP, `S15`).
- *
- * Renvoie `null` lorsque le débit est accepté, ou une `Response` HTTP `429` + `Retry-After`.
- */
 export async function verifierDebitTitulaire(
   options: OptionsDebitTitulaire,
 ): Promise<Response | null> {
@@ -388,24 +293,16 @@ export async function verifierDebitTitulaire(
   return ok ? null : tropDeRequetes(retryAfter, options.origin ?? null);
 }
 
-// ── Télémétrie technique sans contenu et durées de rétention (S13, S20, G13, G16, G18, G25)
-
-/** Durée de conservation impérative de `evenement_technique` : 90 jours (§7.1). */
 export const RETENTION_EVENEMENTS_JOURS = 90;
 
-/** Durée de conservation impérative de `compteur_jour` : 90 jours (§4 / §10). */
 export const RETENTION_COMPTEURS_JOURS = 90;
 
-/** Durée de validité d'une demande d'admission non confirmée (`demande_acces`) : 30 minutes. */
 export const DUREE_DEMANDE_ACCES_MINUTES = 30;
 
-/** Durée de validité d'un lien à usage unique (`session_portail` hors session active) : 30 minutes. */
 export const DUREE_LIEN_PORTAIL_MINUTES = 30;
 
-/** Durée de validité d'une session interactive `/moi` (`session_portail.type_lien = 'session_moi'`) : 12 h. */
 export const DUREE_SESSION_MOI_HEURES = 12;
 
-/** Durée de validité maximale d'un code d'autorisation OAuth 2.1 (`code_oauth`) : 300 secondes. */
 export const DUREE_CODE_OAUTH_SECONDES = 300;
 
 export const ISSUES_TECHNIQUES = [
@@ -434,21 +331,12 @@ export const CODES_ERREUR_TECHNIQUES = [
 
 export type CodeErreurTechnique = (typeof CODES_ERREUR_TECHNIQUES)[number];
 
-/** Format UTC au jour (`AAAA-MM-JJ`), sans heure. */
-export function jourUtc(date = new Date()): string {
-  return date.toISOString().slice(0, 10);
-}
+export { jourUtc };
 
-/** Format UTC à la minute (`AAAA-MM-JJTHH:MM`), jamais à la seconde (§7.1). */
 export function minuteUtc(date = new Date()): string {
   return date.toISOString().slice(0, 16);
 }
 
-/**
- * Format ISO 8601 UTC canonique (`AAAA-MM-JJTHH:MM:SS.sssZ`, 24 caractères) garantissant que
- * l'ordre lexicographique des index B-tree SQLite (`expire_le <= ?1`) coïncide avec l'ordre
- * chronologique exact.
- */
 export function horodatageIsoUtc(date = new Date()): string {
   return date.toISOString();
 }
@@ -494,10 +382,6 @@ function nettoyerClient(info?: InfoClient): string | null {
   return propre.length > 0 ? propre : null;
 }
 
-/**
- * Construit et valide un enregistrement `EvenementTechnique` garanti sans texte libre de requête
- * (`S13` porté par le type et vérifié à l'exécution).
- */
 export function formaterEvenementTechnique(entree: EntreeEvenementTechnique): EvenementTechnique {
   if (
     !MOTIF_IDENTIFIANT_SUR.test(entree.titulaireId) ||
@@ -550,9 +434,6 @@ FROM compteur_jour
 WHERE titulaire_id = ?1 AND jour = ?2
 `.trim();
 
-/**
- * `INSERT ... ON CONFLICT DO UPDATE`, jamais `INSERT OR REPLACE` (§6.2).
- */
 const SQL_INCREMENTER_COMPTEUR_JOUR = `
 INSERT INTO compteur_jour (titulaire_id, jour, classe, appels, erreurs, introuvables, sortants)
 VALUES (?1, ?2, ?3, 1, ?4, ?5, ?6)
@@ -629,7 +510,6 @@ DELETE FROM code_oauth
 WHERE consomme_le IS NOT NULL AND consomme_le <= ?1
 `.trim();
 
-/** Lit en une seule requête indexée les compteurs journaliers UTC des trois classes d'outils. */
 export async function lireCompteursJourD1(
   db: BaseD1Minimale,
   titulaireId: string,
@@ -649,7 +529,6 @@ export async function lireCompteursJourD1(
   return base;
 }
 
-/** Incrémente atomiquement `compteur_jour` via `ON CONFLICT DO UPDATE` (jamais `REPLACE`). */
 export async function incrementerCompteurJourD1(
   db: BaseD1Minimale,
   params: {
@@ -678,7 +557,6 @@ export async function incrementerCompteurJourD1(
     .run();
 }
 
-/** Insère un événement technique sans contenu dans `DB_IDENTITE`. */
 export async function ecrireEvenementTechniqueD1(
   db: BaseD1Minimale,
   evenement: EvenementTechnique,
@@ -701,7 +579,6 @@ export async function ecrireEvenementTechniqueD1(
     .run();
 }
 
-/** Purge tous les événements techniques antérieurs à la fenêtre de rétention de 90 jours (`G16`). */
 export async function purgerEvenementsTechniquesD1(
   db: BaseD1Minimale,
   maintenant = new Date(),
@@ -713,7 +590,6 @@ export async function purgerEvenementsTechniquesD1(
   return minuteSeuil;
 }
 
-/** Purge tous les compteurs journaliers antérieurs à la fenêtre de rétention de 90 jours (`cj_par_jour`). */
 export async function purgerCompteursJourD1(
   db: BaseD1Minimale,
   maintenant = new Date(),
@@ -725,7 +601,6 @@ export async function purgerCompteursJourD1(
   return jourSeuil;
 }
 
-/** Purge les demandes d'admission expirées ou déjà promues (`da_par_expiration` + `da_consommee`). */
 export async function purgerDemandesAccesD1(
   db: BaseD1Minimale,
   maintenant = new Date(),
@@ -736,7 +611,6 @@ export async function purgerDemandesAccesD1(
   return seuilIso;
 }
 
-/** Purge les codes d'invitation expirés qui ne sont rattachés à aucun compte titulaire (`ia_par_expiration`). */
 export async function purgerInvitationsAccesD1(
   db: BaseD1Minimale,
   maintenant = new Date(),
@@ -746,7 +620,6 @@ export async function purgerInvitationsAccesD1(
   return seuilIso;
 }
 
-/** Retire immédiatement une entrée chiffrée du coffre pour un titulaire et un usage donné. */
 export async function retirerEntreeCoffreD1(
   db: BaseD1Minimale,
   titulaireId: string,
@@ -755,12 +628,6 @@ export async function retirerEntreeCoffreD1(
   await db.prepare(SQL_RETIRER_ENTREE_COFFRE).bind(titulaireId, usage).run();
 }
 
-/**
- * Supprime un compte titulaire ainsi que l'intégralité de ses enregistrements rattachés dans
- * `DB_IDENTITE` (`evenement_technique` via `et_par_titulaire`, puis cascade FK indexée sur
- * `invitation_acces`, `jeton`, `coffre_clef`, `session_portail`, `code_oauth`, `compteur_jour`
- * et `registre_gouverne`).
- */
 export async function supprimerCompteTitulaireD1(
   db: BaseD1Minimale,
   titulaireId: string,
@@ -769,7 +636,6 @@ export async function supprimerCompteTitulaireD1(
   await db.prepare(SQL_SUPPRIMER_TITULAIRE).bind(titulaireId).run();
 }
 
-/** Purge les liens et sessions de portail expirés ou déjà consommés (`sp_par_expiration` + `sp_consommee`). */
 export async function purgerSessionsPortailD1(
   db: BaseD1Minimale,
   maintenant = new Date(),
@@ -780,7 +646,6 @@ export async function purgerSessionsPortailD1(
   return seuilIso;
 }
 
-/** Purge les codes d'autorisation OAuth 2.1 expirés ou déjà échangés (`co_par_expiration` + `co_consomme`). */
 export async function purgerCodesOAuthD1(
   db: BaseD1Minimale,
   maintenant = new Date(),
@@ -797,11 +662,6 @@ export interface BilanPurgeRetentions {
   readonly minuteEvenementsSeuil: string;
 }
 
-/**
- * Exécute l'ensemble des purges périodiques de rétention sur `DB_IDENTITE` dans un ordre sûr vis-à-vis
- * des clés étrangères (`demande_acces` avant `invitation_acces`, puis sessions, codes OAuth,
- * compteurs journaliers et événements techniques).
- */
 export async function purgerRetentionsD1(
   db: BaseD1Minimale,
   maintenant = new Date(),
@@ -819,11 +679,6 @@ export async function purgerRetentionsD1(
   };
 }
 
-// ── Schéma D1 canonique `mcp-identite`, registre de rétention (G18) et garde (G13, G25) ──
-
-// Cloudflare D1 plafonne SQLITE_LIMIT_LIKE_PATTERN_LENGTH à 50 octets : découper le contrôle
-// canonique 24 car. `AAAA-MM-JJTHH:MM:SS.sssZ` en deux sous-motifs GLOB <= 33 octets reste
-// déterministe dans toutes les versions de SQLite sans jamais franchir la limite D1.
 const CHECK_JOUR_CANONIQUE = (col: string) =>
   `length(${col}) = 10 AND ${col} GLOB '[0-9][0-9][0-9][0-9]-[0-1][0-9]-[0-3][0-9]'`;
 const CHECK_MINUTE_CANONIQUE = (col: string) =>
@@ -831,11 +686,6 @@ const CHECK_MINUTE_CANONIQUE = (col: string) =>
 const CHECK_ISO_MS_CANONIQUE = (col: string) =>
   `length(${col}) = 24 AND substr(${col}, 1, 10) GLOB '[0-9][0-9][0-9][0-9]-[0-1][0-9]-[0-3][0-9]' AND substr(${col}, 11, 9) GLOB 'T[0-2][0-9]:[0-5][0-9]:[0-5][0-9]' AND substr(${col}, 20, 5) GLOB '.[0-9][0-9][0-9]Z'`;
 
-/**
- * Construit le schéma SQL canonique de la base partagée `DB_IDENTITE` en paramétrant les noms de
- * portées de services propres au déploiement (en sus de `les_deux`), sans aucune table de contenu
- * de requête (`search_log` et `forme_requete` absentes).
- */
 export function construireSchemaIdentiteD1(
   porteesServices: readonly string[] = ["service_a", "service_b"],
 ): string {
@@ -1021,7 +871,6 @@ CREATE INDEX rg_par_titulaire ON registre_gouverne(titulaire_id, le);
 `.trim();
 }
 
-/** Instance par défaut du schéma canonique `DB_IDENTITE` pour validation hors ligne. */
 export const SQL_SCHEMA_IDENTITE_D1 = construireSchemaIdentiteD1();
 
 export type ModeRetentionTable = "purge_automatique" | "cycle_compte" | "configuration_service";
@@ -1033,10 +882,6 @@ export interface PolitiqueRetentionTable {
   readonly purgeCode: string;
 }
 
-/**
- * Registre exhaustif de rétention des tables de `DB_IDENTITE` (`S20`, porte `G18`), servant de
- * source unique de vérité pour la page publique `/conformite`.
- */
 export const POLITIQUES_RETENTION_IDENTITE: readonly PolitiqueRetentionTable[] = [
   {
     table: "titulaire",
@@ -1106,10 +951,6 @@ export const POLITIQUES_RETENTION_IDENTITE: readonly PolitiqueRetentionTable[] =
   },
 ] as const;
 
-/**
- * Porte `G18` : vérifie que chaque table déclarée dans un schéma SQL possède une politique de
- * rétention explicite et non vide dans `politiques`, et qu'aucune entrée orpheline ne subsiste.
- */
 export function verifierCouvertureRetentionSchema(
   sql = SQL_SCHEMA_IDENTITE_D1,
   politiques: readonly PolitiqueRetentionTable[] = POLITIQUES_RETENTION_IDENTITE,
@@ -1231,17 +1072,6 @@ interface ColonneSqlExtraite {
   aCheckIn: boolean;
 }
 
-/**
- * Vérifie statiquement qu'un script DDL SQL respecte l'absence totale de journalisation de
- * contenu de requête (`search_log`, `forme_requete` et colonnes de contenu interdites) ainsi que
- * les gardes `G13` et `G25` :
- * - aucune table ne déclare de colonne de contenu de requête (`query`, `requete`, `forme`, etc.) ;
- * - aucune table opérationnelle/télémétrique portant une identité ne déclare de colonne texte ou
- *   non typée sans contrainte `CHECK (... IN (...))` (`G13`) ;
- * - aucune table portant du texte libre ne déclare un horodatage plus fin que le jour (`G25`).
- *
- * Renvoie la liste des violations détectées (tableau vide si conforme).
- */
 export function verifierSchemaSansContenuIdentifiant(sql: string): string[] {
   const violations: string[] = [];
   const sansCommentaires = retirerCommentairesSql(sql);
@@ -1449,8 +1279,6 @@ function extraireDefinitionsColonnesSql(bloc: string): ColonneSqlExtraite[] {
     const nom = m[1].toLowerCase();
     const secondJeton = m[2]?.toUpperCase();
     const estNonType = secondJeton === undefined || MOTS_CLES_CONTRAINTE_COLONNE.has(secondJeton);
-    // Liste blanche fermée par défaut : toute colonne non strictement numérique (TEXT, BLOB, JSON,
-    // STRING, VARCHAR, ANY ou non typée) exige une énumération fermée dans les tables de télémétrie.
     const estTexte = estNonType || !TYPES_STRICTEMENT_NUMERIQUES.has(secondJeton);
     const sansChaines = neutraliserLitterauxSql(ligne);
     const aCheckIn = aContrainteEnumerationFermee(sansChaines, nom);

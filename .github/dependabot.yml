@@ -1,7 +1,5 @@
 version: 2
 updates:
-  # Toutes les dépendances de ce dépôt sont de DÉVELOPPEMENT (`dependencies` vide).
-  # Le groupage mineur/correctif est sans impact en production.
   - package-ecosystem: "npm"
     directory: "/"
     schedule:
