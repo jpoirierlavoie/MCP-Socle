@@ -28,9 +28,9 @@
     "audit": "node scripts/verifier-audit.mjs"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.6.7",
-    "@cloudflare/vitest-plugin": "^1.8.4",
-    "@cloudflare/workers-types": "^5.20261115.1",
+    "@biomejs/biome": "^2.6.8",
+    "@cloudflare/vitest-plugin": "^1.8.5",
+    "@cloudflare/workers-types": "^5.20261120.1",
     "typescript": "^7.0.2",
     "vitest": "^4.1.12"
   },
