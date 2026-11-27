@@ -1,14 +1,3 @@
-// Socle commun des connecteurs MCP — surface publique.
-//
-// RIEN D'EXÉCUTABLE ICI : uniquement des réexports. Le socle est consommé comme dépendance
-// de DÉVELOPPEMENT et empaqueté par esbuild au déploiement (S2), ce qui préserve la
-// décision D2 — zéro dépendance d'exécution — au sens qui compte : du code à soi, versionné
-// et signé, et non une surface Dependabot.
-//
-// CE QUE LE SOCLE NE PORTE JAMAIS : l'analyseur de citations, les tables du Québec, le
-// pipeline EPUB, les descripteurs d'outils, `INSTRUCTIONS`, `SERVER_INFO`, `callTool`, les
-// gabarits de rendu du domaine. Le socle ne connaît pas le droit.
-
 export {
   type AnneauMaitresCoffre,
   type BinaireD1,
@@ -59,7 +48,6 @@ export {
   lireCompteursJourD1,
   MAX_CANDIDATS_PORTEUR_PREAUTH,
   MAX_ENTREES_QUARANTAINE_IP,
-  MODE_ADMISSION_PAR_DEFAUT,
   MODES_ADMISSION,
   type ModeAdmission,
   type ModeRetentionTable,
@@ -123,8 +111,6 @@ export {
   repondreRessourceProtegee,
   repondreServeurAutorisation,
   URIS_REDIRECTION_CLAUDE,
-  URIS_REDIRECTION_GOOGLE_CONNUES,
-  urlMetadonneesRessource,
   validerMetadonneesClientCimd,
   validerMetadonneesInscriptionDcr,
   verifierDefiPkceS256,
@@ -134,6 +120,7 @@ export {
   bearerOf,
   decodeOrNull,
   empreinte,
+  encoderBase64Url,
   estCheminMontageAdmissible,
   estJetonFrappe,
   frapperJeton,
@@ -145,13 +132,11 @@ export {
   normaliserUrlMontage,
   ouvrir,
   type Porte,
-  porteurEntete,
   porteursPresentes,
   queueJeton,
   type ResultatPorteurEntete,
   sansBarresFinales,
   secretsAdmis,
-  trimTrailingSlash,
   trouverPorteurApparie,
 } from "./identite/porteur";
 export {
@@ -211,14 +196,17 @@ export {
   corsHeaders,
   debitAcceptable,
   drapeau,
+  JSON_HEADERS,
   jsonResponse,
   type Limiteur,
+  NO_STORE_HEADERS,
   type OptionsSante,
   ORIGINES_PAR_DEFAUT,
   origineAutorisee,
   origineRefusee,
   originesAdmises,
   preflight,
+  repondreDocumentJsonPublic,
   reponseSante,
 } from "./protocole/http";
 export {
@@ -230,7 +218,6 @@ export {
   CLEF_VERSION,
   clientLisible,
   complet,
-  estCachable,
   habillerResultat,
   type InfoClient,
   lireMeta,

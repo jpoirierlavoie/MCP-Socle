@@ -1,43 +1,8 @@
-/**
- * Validateur JSON-Schema en SOUS-ENSEMBLE.
- *
- * Mots-clefs pris en charge : `type` (object, string, integer, number, boolean, array),
- * `properties`, `required`, `enum`, `minimum`, `maximum`, `minLength`, `maxLength`,
- * `minItems`, `maxItems`, `items` (un niveau), `additionalProperties: false`.
- *
- * Écrire un validateur plutôt que d'ajouter une dépendance est la décision D2 tenue au
- * sens fort : zéro dépendance d'exécution. Le sous-ensemble couvre les schémas des deux
- * connecteurs, et rien de plus n'est nécessaire.
- *
- * Repris de `MCP-Jurisprudence`, avec fermeture par défaut sur tout `type` inconnu.
- *
- * ⚠ CE QUE CE VALIDATEUR NE FAIT PAS, et qu'il faut savoir avant de s'y fier :
- *
- *   · **Il n'applique PAS les valeurs par défaut.** `default` existe dans le type, et il
- *     n'est lu nulle part : c'est un champ de DOCUMENTATION, publié dans `tools/list`.
- *     Un schéma qui porte `default` ne fait rien arriver — la valeur doit descendre dans
- *     le gestionnaire (`args.lang ?? "fr"`). Le piège est réel et silencieux : le schéma
- *     publié continue d'annoncer le défaut pendant que l'argument arrive `undefined`.
- *   · **Un `type` inconnu ÉCHOUE fermement** (`typeOk` rend `false` par défaut, et
- *     `JsonSchema.type` est restreint à `TypeConnu`). Tout registre reste invité à épingler
- *     les schémas publiés avec `TYPES_CONNUS`.
- */
-
-/** Les seuls `type` pris en charge par `typeOk`. Tout autre type est rejeté (fermé par défaut). */
 export const TYPES_CONNUS = ["object", "string", "integer", "number", "boolean", "array"] as const;
 
 export type TypeConnu = (typeof TYPES_CONNUS)[number];
 
 export interface JsonSchema {
-  /**
-   * Dialecte du schéma. PUBLIÉ, jamais interprété ici — comme `default`.
-   *
-   * Il compte pour le CLIENT : `2026-07-28` prescrit que l'absence de ce champ vaut
-   * JSON Schema 2020-12. Un schéma engendré par une chaîne d'outils qui émet du draft-07
-   * doit donc le dire, sous peine d'être lu sous un dialecte qui n'est pas le sien. Le
-   * validateur du socle, lui, n'implémente qu'un sous-ensemble commun aux deux et n'a pas
-   * à trancher.
-   */
   $schema?: string;
   type?: TypeConnu;
   properties?: Record<string, JsonSchema>;
@@ -52,7 +17,6 @@ export interface JsonSchema {
   items?: JsonSchema;
   additionalProperties?: boolean;
   description?: string;
-  /** Publié dans `tools/list`. JAMAIS appliqué ici — voir l'avertissement en tête. */
   default?: unknown;
 }
 
@@ -109,7 +73,6 @@ function validateValue(schema: JsonSchema, value: unknown, nom: string): string[
     return erreurs;
   }
 
-  // Un booléen est un cas clos : ni bornes, ni longueur, ni éléments.
   if (typeof value === "boolean") return erreurs;
 
   if (typeof value === "number") {
@@ -126,9 +89,6 @@ function validateValue(schema: JsonSchema, value: unknown, nom: string): string[
       erreurs.push(`« ${nom} » doit compter au plus ${schema.maxLength} caractères.`);
     }
     if (schema.minLength !== undefined && value.trim().length < schema.minLength) {
-      // Sur la longueur MINIMALE on compte les caractères non blancs : sinon un titre fait
-      // d'espaces passe le schéma et échoue plus bas, dans un message qui a l'air d'une
-      // panne du serveur.
       erreurs.push(`« ${nom} » doit compter au moins ${schema.minLength} caractères non blancs.`);
     }
   }
@@ -168,7 +128,6 @@ function validateValue(schema: JsonSchema, value: unknown, nom: string): string[
   return erreurs;
 }
 
-/** Valide `args` contre `schema`. Tableau vide = valide. */
 export function validateArgs(schema: JsonSchema, args: unknown): string[] {
   return validateValue(schema, args, "arguments");
 }

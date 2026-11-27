@@ -1,11 +1,10 @@
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const CHEMIN_COURANT = fileURLToPath(import.meta.url);
 const RACINE = resolve(dirname(CHEMIN_COURANT), "..");
-const CHEMIN_OSV = resolve(RACINE, "osv-scanner.toml");
 
 export function lireExemptionsOsvToml(contenuToml) {
   const exemptions = new Map();
@@ -87,7 +86,7 @@ export function evaluerConformiteAudit(rapportProd, rapportComplet, contenuOsvTo
   return { conforme: erreurs.length === 0, erreurs, nbAvisTries: avisDirects.size };
 }
 
-function executerNpmAudit(argsSupplementaires) {
+function executerNpmAudit(argsSupplementaires, racine = RACINE) {
   const estWindows = process.platform === "win32";
   const commande = estWindows ? "cmd.exe" : "npm";
   const args = estWindows
@@ -101,7 +100,7 @@ function executerNpmAudit(argsSupplementaires) {
   }
 
   const res = spawnSync(commande, args, {
-    cwd: RACINE,
+    cwd: racine,
     env: envPropre,
     encoding: "utf8",
     maxBuffer: 16 * 1024 * 1024,
@@ -177,21 +176,39 @@ export function autoVerifierLogiqueAudit() {
   }
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === CHEMIN_COURANT) {
+export function executerAudit(racine = process.cwd()) {
+  const dossierRacine = resolve(racine);
+  const cheminOsv = resolve(dossierRacine, "osv-scanner.toml");
   autoVerifierLogiqueAudit();
-  const rapportProd = executerNpmAudit(["--omit=dev"]);
-  const rapportComplet = executerNpmAudit([]);
-  const contenuOsv = readFileSync(CHEMIN_OSV, "utf8");
+  const rapportProd = executerNpmAudit(["--omit=dev"], dossierRacine);
+  const rapportComplet = executerNpmAudit([], dossierRacine);
+  const contenuOsv = readFileSync(cheminOsv, "utf8");
   const verdict = evaluerConformiteAudit(rapportProd, rapportComplet, contenuOsv);
 
   if (!verdict.conforme) {
     for (const err of verdict.erreurs) {
       console.error(`ÉCHEC : ${err}`);
     }
-    process.exit(1);
+    process.exitCode = 1;
+    return verdict;
   }
 
   console.log(
     `Audit npm conforme : 0 vulnérabilité d'exécution ; ${verdict.nbAvisTries} avis devDependencies trié(s) en parité avec osv-scanner.toml.`,
   );
+  return verdict;
+}
+
+function estExecutionDirecte() {
+  if (!process.argv[1]) return false;
+  const argvResolu = resolve(process.argv[1]);
+  try {
+    return realpathSync(argvResolu) === realpathSync(CHEMIN_COURANT);
+  } catch {
+    return argvResolu === CHEMIN_COURANT;
+  }
+}
+
+if (estExecutionDirecte()) {
+  executerAudit(RACINE);
 }

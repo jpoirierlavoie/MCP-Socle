@@ -1,37 +1,17 @@
-/**
- * Coffre de secrets tiers chiffré par enveloppe (`HKDF-SHA256` + `AES-256-GCM`) et expurgation
- * des traces journalisables.
- *
- * Invariants appliqués (§5.1–§5.4, portes `G8`, `G9`, `G10`) :
- * - **Dérivation liée au titulaire et à l'usage** :
- *   `DEK = HKDF-SHA256(ikm = maitre_v{n}, salt = titulaireId, info = "${usage}/v1")`
- *   `chiffre = AES-256-GCM(DEK, iv_12o, clair, aad = "${titulaireId}:${usage}:${version}")`
- *   Une ligne recopiée d'un titulaire ou d'un usage à un autre échoue à l'authentification GCM.
- * - **Fermeture stricte sur le texte clair (`G10`)** : aucune fonction exportée ne renvoie la
- *   valeur déchiffrée ; `ouvrirCoffre` ne la livre qu'à la fabrique asynchrone le temps de
- *   construire le client, puis efface le tampon d'octets temporaire.
- * - **Zéro retombée implicite (`G8`)** : ordre strict `surchargeEntete` -> `coffre` -> `"ABSENTE"`
- *   (ou `"REFUSEE"` si l'entrée a été invalidée).
- */
-
 import { MAX_LONGUEUR_PORTEUR, type ResultatPorteurEntete } from "./porteur";
 
-/** Taille standard du vecteur d'initialisation AES-GCM : 96 bits (12 octets). */
 export const LONGUEUR_IV_COFFRE = 12;
 
-/** Longueur minimale exigée pour un secret maître de coffre (`COFFRE_MAITRE_V{n}`). */
 export const LONGUEUR_MIN_MAITRE_COFFRE = 32;
 
 export const ETATS_ENTREE_COFFRE = ["valide", "refusee", "inconnue"] as const;
 
 export type EtatEntreeCoffre = (typeof ETATS_ENTREE_COFFRE)[number];
 
-/** Anneau des secrets maîtres indexés par numéro de version (`1`, `2`, …). */
 export type AnneauMaitresCoffre = Readonly<Record<number, string | undefined>>;
 
 export type BinaireD1 = Uint8Array | ArrayBuffer | readonly number[];
 
-/** Ligne chiffrée stockée en base D1 pour un titulaire et un usage donné. */
 export interface LigneCoffre {
   readonly titulaireId: string;
   readonly version: number;
@@ -42,7 +22,6 @@ export interface LigneCoffre {
   readonly etat: EtatEntreeCoffre;
 }
 
-/** Résultat prêt à persister produit par `scellerCoffre`. */
 export interface EntreeCoffreScellee {
   readonly titulaireId: string;
   readonly usage: string;
@@ -63,10 +42,6 @@ export interface OptionsScellementCoffre {
   readonly usage: string;
   readonly version: number;
   readonly maitre: string;
-  /**
-   * Matériau maître optionnel dédié à `empreinteClef` et `repere` (par ex. `COFFRE_MAITRE_V1`
-   * stable lors d'une rotation d'enveloppe vers `V2`). Par défaut : `maitre`.
-   */
   readonly maitreEmpreinte?: string;
 }
 
@@ -77,7 +52,6 @@ export interface SourceCoffre {
   readonly usage: string;
   readonly entree: LigneCoffre | null | undefined;
   readonly maitres: AnneauMaitresCoffre;
-  /** Variante zéro-connaissance fournie par en-tête client maîtrisé (prime sur le coffre, S11). */
   readonly surchargeEntete?: string | ResultatPorteurEntete | null;
 }
 
@@ -196,12 +170,6 @@ async function calculerHmacCoffreHex(
   }
 }
 
-/**
- * Calcule l'empreinte non réversible à clé secrète (`HMAC-SHA256` dérivé par `HKDF-SHA256` du
- * secret maître et de `usage`, indépendamment de `titulaireId`) stockée dans
- * `coffre_clef.empreinte_clef` pour détecter les doublons inter-comptes en console sans jamais
- * offrir d'oracle de recherche exhaustive hors ligne sur une extraction D1.
- */
 export async function empreinteCoffre(
   clairBrut: string,
   options: OptionsEmpreinteCoffre,
@@ -210,14 +178,6 @@ export async function empreinteCoffre(
   return hex;
 }
 
-/**
- * Construit un repère visuel non réversible à clé secrète (`HMAC-SHA256` dérivé du secret maître
- * et de `usage`, séparé par domaine de `empreinteCoffre`) sans jamais exposer de préfixe ni de
- * condensé non salé :
- * - `< 16` caractères : `••••#<8 hex HMAC>` (zéro caractère clair exposé) ;
- * - `16..23` caractères : `••••<2 derniers>#<8 hex HMAC>` ;
- * - `>= 24` caractères : `••••<4 derniers>#<8 hex HMAC>`.
- */
 export async function repereCoffre(
   clairBrut: string,
   options: OptionsEmpreinteCoffre,
@@ -234,11 +194,6 @@ export async function repereCoffre(
   return `••••${points.slice(-4).join("")}#${hmac8}`;
 }
 
-/**
- * Chiffre une valeur sensible sous enveloppe `HKDF-SHA256` + `AES-256-GCM` avec donnée
- * additionnelle authentifiée liée à `titulaireId`, `usage` et `version`, et calcule son repère
- * masqué ainsi que son empreinte HMAC à clé maître (`empreinteClef`).
- */
 export async function scellerCoffre(
   clairBrut: string,
   options: OptionsScellementCoffre,
@@ -280,10 +235,6 @@ export async function scellerCoffre(
   }
 }
 
-/**
- * Résout et instancie un client consommateur sans jamais exposer le texte clair hors de la
- * fermeture `fabrique` (`G8`, `G10`).
- */
 export async function ouvrirCoffre<T>(
   source: SourceCoffre,
   fabrique: (clair: string) => T | Promise<T>,
@@ -405,21 +356,13 @@ function expurgerParamsUrl(texte: string): string {
     let nomDecode = nomBrut;
     try {
       nomDecode = decodeURIComponent(nomBrut);
-    } catch {
-      // Séquence de pourcentage mal formée : comparer le nom brut tel quel.
-    }
+    } catch {}
     return PARAMS_SENSIBLES_URL.has(nomDecode.toLowerCase())
       ? `${prefixe}[EXPURGE]`
       : correspondance;
   });
 }
 
-/**
- * Expurge les paramètres d'authentification d'URL (`?key=`, `api_key=`, `token=`, `code=`, etc.,
- * y compris lorsque le nom du paramètre est encodé en pourcentage), les en-têtes `Bearer` et
- * `X-Clef-*`, les segments `/mcp/<jeton>` ou `/mcp/oauth/<jeton>` ainsi que toute chaîne sensible
- * fournie explicitement (`G9`).
- */
 export function expurger(texte: string, valeursSensibles: readonly string[] = []): string {
   let sortie = expurgerParamsUrl(texte)
     .replace(MOTIF_BEARER, "$1[EXPURGE]")

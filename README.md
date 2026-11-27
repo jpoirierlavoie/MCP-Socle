@@ -14,7 +14,7 @@ En **dépendance de développement**, par étiquette git immuable, et empaqueté
 
 ```jsonc
 "devDependencies": {
-  "@poirierlavoie/mcp-socle": "github:jpoirierlavoie/MCP-Socle#v0.8.6"
+  "@poirierlavoie/mcp-socle": "github:jpoirierlavoie/MCP-Socle#v0.8.7"
 }
 ```
 
@@ -41,17 +41,14 @@ Les tests s'exécutent hors ligne dans `workerd` (`@cloudflare/vitest-plugin`) a
 | [`SECURITY.md`](SECURITY.md) | politique de divulgation coordonnée (sécurité, confidentialité et secret professionnel) et propriétés de sécurité |
 | [`LICENSE`](LICENSE) | licence open source `Apache-2.0` |
 | [`NOTICE`](NOTICE) | mention de création assistée par IA, portée de la licence et non-revendication |
-| [`SPEC-SOCLE-COMMUN.md`](SPEC-SOCLE-COMMUN.md) | architecture directrice : ouverture multilocataire, portail `MCP-Acces`, double monture `/mcp` + `/mcp/oauth` et compatibilité Deep Research Claude & Gemini |
-| [`src/identite/LISEZ-MOI.md`](src/identite/LISEZ-MOI.md) | inventaire de `identite/` (`porteur.ts`, `refus.ts`, `titulaire.ts`, `coffre.ts`, `oauth.ts`, `gouverne.ts`) |
-| [`src/protocole/LISEZ-MOI.md`](src/protocole/LISEZ-MOI.md) | inventaire de `protocole/` (`rpc.ts`, `valide.ts`, `registre.ts`, `versions.ts`, `entetes.ts`, `meta.ts`, `decouverte.ts`, `http.ts`, `serveur.ts`) |
-| [`docs/archive/`](docs/archive/) | documents historiques d'ouverture et de planification (`NOTE-OUVERTURE-PUBLIQUE.md`, `FEUILLE-DE-ROUTE.md`, `PROCEDURES-MANUELLES.md`) |
 
-## État (`v0.8.6` — Callback OAuth Antigravity, alias SEP-2127 `/.well-known/mcp/server-card.json` et point distant `/mcp/oauth`)
+## État (`v0.8.7` — Exécuteur d'audit partagé `./verifier-audit`, consolidation interne et retrait documentaire)
 
-- **Protocole ([`src/protocole/LISEZ-MOI.md`](src/protocole/LISEZ-MOI.md)) :** enveloppe JSON-RPC 2.0, validateur JSON Schema fermé par défaut, registre et exécution des outils, négociation de versions et validation UTF-8 des en-têtes `2026-07-28`, fiche de découverte `/mcp/server-card` et `/.well-known/mcp/server-card.json`, origines CORS (Claude, Gemini et ChatGPT/OpenAI), lecture bornée `64 Kio` et répartiteur HTTP sans état.
-- **Identité, coffre, OAuth 2.1 et gouverne ([`src/identite/LISEZ-MOI.md`](src/identite/LISEZ-MOI.md)) :**
+- **Protocole (`src/protocole/`) :** enveloppe JSON-RPC 2.0, validateur JSON Schema fermé par défaut, registre et exécution des outils, négociation de versions et validation UTF-8 des en-têtes `2026-07-28`, fiche de découverte `/mcp/server-card` et `/.well-known/mcp/server-card.json`, origines CORS (Claude, Gemini et ChatGPT/OpenAI), lecture bornée `64 Kio` et répartiteur HTTP sans état.
+- **Identité, coffre, OAuth 2.1 et gouverne (`src/identite/`) :**
   - Extraction et comparaison SHA-256 à temps constant des jetons (`Bearer`, `?key=` optionnel, `/mcp/<jeton>`), avec refus uniforme `404` sur `/mcp` et `401` (`WWW-Authenticate` RFC 9728) sur `/mcp/oauth` (`Cache-Control: no-store`).
   - Résolution multilocataire sur base D1 (`titulaire` / `jeton`) avec portées par service et coffre chiffré (`HKDF-SHA256` + `AES-256-GCM`) pour les clés CanLII personnelles.
   - Découverte et sécurité OAuth 2.1 (RFC 9728, RFC 8414, RFC 9207 `iss`, PKCE `S256` obligatoire, inscription dynamique RFC 7591 et validation CIMD SEP-3149 anti-SSRF) pour Claude, Antigravity, Gemini et ChatGPT/OpenAI.
   - Limitation de débit à deux étages compatible avec les rafales Deep Research, sas d'admission et d'invitation, purges/suppression de compte Loi 25 et télémétrie technique sans contenu conservée 90 jours.
+- **Audit partagé (`./verifier-audit`) :** `scripts/verifier-audit.mjs` exporte `executerAudit` et valide `npm audit` (exécution et développement) contre `osv-scanner.toml`.
 - **Dépôts consommateurs :** `MCP-Acces` (portail d'admission, coffre et serveur OAuth 2.1 sur `DB_IDENTITE`), `MCP-Legislation` (`lois`, double montage `/mcp` + `/mcp/oauth`), `MCP-Jurisprudence` (`juris`, double montage et coffre CanLII) et [`droit-civil-quebecois`](https://github.com/jpoirierlavoie/droit-civil-quebecois) (greffon cadre multiplateforme).

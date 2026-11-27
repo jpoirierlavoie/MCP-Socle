@@ -14,9 +14,6 @@ import {
   repondreRessourceProtegee,
   repondreServeurAutorisation,
   URIS_REDIRECTION_CLAUDE,
-  URIS_REDIRECTION_GOOGLE_CONNUES,
-  URIS_REDIRECTION_OPENAI_CONNUES,
-  urlMetadonneesRessource,
   validerMetadonneesClientCimd,
   validerMetadonneesInscriptionDcr,
   verifierDefiPkceS256,
@@ -45,7 +42,6 @@ describe("refus 401 RFC 9728 vs 404 sans oracle et pré-vol extensible", () => {
     expect(www).not.toContain("\r");
     expect(www).not.toContain("\n");
 
-    // Une resourceMetadata malveillante contenant CRLF ou guillemet est rejetée intégralement :
     const wwwInjectee = construireEnteteBearer({
       resourceMetadata:
         'https://exemple.test/.well-known/oauth-protected-resource/mcp/oauth"\r\nX-Injecte: 1',
@@ -57,7 +53,6 @@ describe("refus 401 RFC 9728 vs 404 sans oracle et pré-vol extensible", () => {
 
     expect(construireEnteteBearer()).toBe("Bearer");
 
-    // Sur /mcp (forme 404), aucune option OAuth ne doit jamais fuir.
     const rep404 = refuser("404", "https://claude.ai", {
       resourceMetadata: "https://exemple.test/.well-known/oauth-protected-resource",
     });
@@ -76,14 +71,6 @@ describe("refus 401 RFC 9728 vs 404 sans oracle et pré-vol extensible", () => {
 
 describe("RFC 9728 et RFC 8414 — découverte OAuth 2.1", () => {
   it("calcule et sert la fiche de ressource protégée RFC 9728 (GET, HEAD, OPTIONS, 405)", async () => {
-    const urlMeta = urlMetadonneesRessource("https://service.exemple.test/mcp/oauth/");
-    expect(urlMeta).toBe(
-      "https://service.exemple.test/.well-known/oauth-protected-resource/mcp/oauth",
-    );
-    expect(urlMetadonneesRessource("https://service.exemple.test/")).toBe(
-      "https://service.exemple.test/.well-known/oauth-protected-resource",
-    );
-
     const doc = construireRessourceProtegee({
       resource: "https://service.exemple.test/mcp/oauth",
       authorizationServers: ["https://acces.exemple.test/"],
@@ -169,8 +156,10 @@ describe("G36 — Validation des redirect_uri, CIMD anti-SSRF et normalisation d
   it("autorise les rappels HTTPS exacts (Claude, Gemini/Vertex) et rejette espaces, caractères de contrôle et normalisations implicites", () => {
     const urisAutorisees = [
       ...URIS_REDIRECTION_CLAUDE,
-      ...URIS_REDIRECTION_GOOGLE_CONNUES,
-      ...URIS_REDIRECTION_OPENAI_CONNUES,
+      "https://vertexaisearch.cloud.google.com/oauth-redirect",
+      "https://antigravity.google/oauth-callback",
+      "https://antigravity.google.com/oauth/callback",
+      "https://chatgpt.com/connector_platform_oauth_redirect",
     ];
     expect(
       estUriRedirectionAutorisee("https://chatgpt.com/connector_platform_oauth_redirect", {
@@ -199,10 +188,8 @@ describe("G36 — Validation des redirect_uri, CIMD anti-SSRF et normalisation d
       }),
     ).toBe(true);
 
-    // Boucle locale désactivée par défaut :
     expect(estUriRedirectionAutorisee("http://127.0.0.1:54321/callback")).toBe(false);
 
-    // Boucle locale activée (avec et sans port explicite) :
     for (const locale of [
       "http://127.0.0.1/callback",
       "http://localhost/callback",
@@ -216,7 +203,6 @@ describe("G36 — Validation des redirect_uri, CIMD anti-SSRF et normalisation d
       expect(estUriRedirectionAutorisee(locale, { autoriserBoucleLocale: true })).toBe(true);
     }
 
-    // Rejets de sécurité (incluant \x00/\r/\n/\t rognés silencieusement par WHATWG URL et :443) :
     for (const dangereuse of [
       "http://claude.ai/api/mcp/auth_callback",
       " https://claude.ai/api/mcp/auth_callback",
@@ -337,7 +323,6 @@ describe("G36 — Validation des redirect_uri, CIMD anti-SSRF et normalisation d
       }).ok,
     ).toBe(false);
 
-    // Rejette client_id discordant, client_secret public ou redirect_uri SSRF :
     expect(
       validerMetadonneesClientCimd(cid, {
         client_id: "https://autre.exemple.org/c.json",
@@ -365,7 +350,6 @@ describe("G36 — Validation des redirect_uri, CIMD anti-SSRF et normalisation d
       }).ok,
     ).toBe(false);
 
-    // Normalisation des portées OAuth vers DB_IDENTITE :
     const services = ["service_a", "service_b"];
     expect(normaliserPorteeOAuth(undefined, services)).toBe("les_deux");
     expect(normaliserPorteeOAuth("", services)).toBe("les_deux");
@@ -437,7 +421,6 @@ describe("G36 — Validation des redirect_uri, CIMD anti-SSRF et normalisation d
       .bind(porteeSousEnsemble)
       .run();
 
-    // Une portée non triée (« service_b service_a ») ou hors schéma est rejetée par SQLite CHECK :
     await expect(
       db
         .prepare(
@@ -519,7 +502,7 @@ describe("RFC 7591 — Validation hors réseau d'inscription dynamique DCR", () 
       ["http://exemple.org/callback"],
       ["https://127.0.0.1/callback"],
       ["https://169.254.169.254/latest/meta-data"],
-      ["http://127.0.0.1:54321/oauth-callback"], // boucle locale non activée
+      ["http://127.0.0.1:54321/oauth-callback"],
       ["javascript:alert(1)"],
     ]) {
       const res = validerMetadonneesInscriptionDcr({ redirect_uris: mauvaisUri });

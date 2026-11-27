@@ -55,7 +55,6 @@ describe("parseMessage — fautes de forme", () => {
       parseMessage('{"jsonrpc":"2.0","method":"x","id":3,"params":"non"}');
       throw new Error("aurait dû lever");
     } catch (e) {
-      // L'id voyage avec l'erreur : sans lui le client ne peut pas apparier la réponse.
       expect((e as JsonRpcError).requestId).toBe(3);
     }
   });
@@ -97,16 +96,12 @@ describe("résultats d'outil", () => {
   });
 
   it("aucun des deux n'émet structuredContent — tant que S5 n'est pas livrée", () => {
-    // Épingle l'état ACTUEL, non un idéal : la marche 4 élargira `ToolResult`, et ce test
-    // sera alors REMPLACÉ par celui de `gardes` non vide — jamais simplement supprimé.
     expect(Object.keys(ok("t")).sort()).toEqual(["content", "isError"]);
   });
 });
 
 describe("ToolResult élargi (marche 2)", () => {
   it("ok() SANS charge rend exactement { content, isError }", () => {
-    // La clef ne doit pas apparaître « vide » : un client qui teste sa présence ne doit
-    // pas croire à une charge structurée là où il n'y en a pas.
     expect(Object.keys(ok("t")).sort()).toEqual(["content", "isError"]);
     expect("structuredContent" in ok("t")).toBe(false);
   });
@@ -119,7 +114,6 @@ describe("ToolResult élargi (marche 2)", () => {
   });
 
   it("une charge VIDE n'est pas émise — `{}` et `undefined` sont exclus", () => {
-    // Choix délibéré : un objet vide n'apporte rien et ferait croire à un contrat.
     expect("structuredContent" in ok("t", undefined)).toBe(false);
     expect("structuredContent" in ok("t", {})).toBe(false);
   });

@@ -7,20 +7,7 @@ import osvTomlRaw from "../osv-scanner.toml?raw";
 import pkgRaw from "../package.json?raw";
 import readmeMd from "../README.md?raw";
 import securityMd from "../SECURITY.md?raw";
-import specMd from "../SPEC-SOCLE-COMMUN.md?raw";
 import indexTs from "../src/index.ts?raw";
-
-const RACINE_MD = import.meta.glob<string>("../*.md", {
-  query: "?raw",
-  import: "default",
-  eager: true,
-});
-
-const ARCHIVE_MD = import.meta.glob<string>("../docs/archive/*.md", {
-  query: "?raw",
-  import: "default",
-  eager: true,
-});
 
 const SOURCES_TS = import.meta.glob<string>("../src/**/*.ts", {
   query: "?raw",
@@ -33,18 +20,22 @@ function sansCommentaires(code: string): string {
 }
 
 describe("hygiène documentaire et manifeste", () => {
-  it("package.json déclare le nom @poirierlavoie/mcp-socle, la version 0.8.6 et zéro dépendance d'exécution", () => {
+  it("package.json déclare le nom @poirierlavoie/mcp-socle, la version 0.8.7 et zéro dépendance d'exécution", () => {
     const pkg = JSON.parse(pkgRaw) as {
       name: string;
       version: string;
       license: string;
       dependencies?: Record<string, string>;
+      exports?: Record<string, string>;
+      files?: string[];
       scripts?: Record<string, string>;
     };
     expect(pkg.name).toBe("@poirierlavoie/mcp-socle");
-    expect(pkg.version).toBe("0.8.6");
+    expect(pkg.version).toBe("0.8.7");
     expect(pkg.license).toBe("Apache-2.0");
     expect(Object.keys(pkg.dependencies ?? {})).toEqual([]);
+    expect(pkg.exports?.["./verifier-audit"]).toBe("./scripts/verifier-audit.mjs");
+    expect(pkg.files).toContain("scripts/verifier-audit.mjs");
     expect(pkg.scripts?.["type-check"]).toBe("tsc --noEmit");
     expect(pkg.scripts?.lint).toBe("biome check .");
     expect(pkg.scripts?.test).toBe("vitest run");
@@ -77,17 +68,18 @@ describe("hygiène documentaire et manifeste", () => {
   });
 
   it("la documentation active ne porte plus les anciens noms de dépôts ni d'étiquette périmée", () => {
-    for (const doc of [readmeMd, claudeMd, geminiMd, securityMd, specMd]) {
+    for (const doc of [readmeMd, claudeMd, geminiMd, securityMd]) {
       expect(doc.length).toBeGreaterThan(100);
       expect(doc).not.toContain("MCP-Jurisprudence-Quebec");
       expect(doc).not.toContain("MCP-Legislation-Quebec");
       expect(doc).not.toContain("MCP-Socle-Juridique");
       expect(doc).not.toContain("socle-juridique");
       expect(doc).not.toContain("pratique-civile-outils");
+      expect(doc).not.toContain("#v0.8.6");
     }
-    expect(readmeMd).toContain("#v0.8.6");
-    expect(claudeMd).toContain("#v0.8.6");
-    expect(securityMd).toContain("#v0.8.6");
+    expect(readmeMd).toContain("#v0.8.7");
+    expect(claudeMd).toContain("#v0.8.7");
+    expect(securityMd).toContain("#v0.8.7");
     expect(readmeMd).not.toContain("#v0.1.0");
     expect(readmeMd).not.toContain("#v0.6.1");
     expect(readmeMd).not.toContain("#v0.6.2");
@@ -108,20 +100,6 @@ describe("hygiène documentaire et manifeste", () => {
     expect(claudeMd).not.toContain("#v0.8.3");
     expect(claudeMd).not.toContain("#v0.8.4");
     expect(claudeMd).not.toContain("#v0.8.5");
-  });
-
-  it("les documents datés sont archivés sous docs/archive/ et absents de la racine", () => {
-    const nomsRacine = Object.keys(RACINE_MD).map((p) => p.split("/").pop());
-    for (const archive of [
-      "FEUILLE-DE-ROUTE.md",
-      "PROCEDURES-MANUELLES.md",
-      "NOTE-OUVERTURE-PUBLIQUE.md",
-    ]) {
-      expect(nomsRacine).not.toContain(archive);
-      const chemin = `../docs/archive/${archive}`;
-      expect(ARCHIVE_MD[chemin]).toBeDefined();
-      expect(ARCHIVE_MD[chemin]).toContain("Document d'archive");
-    }
   });
 });
 

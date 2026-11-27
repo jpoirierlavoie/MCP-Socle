@@ -1,6 +1,6 @@
 {
   "name": "@poirierlavoie/mcp-socle",
-  "version": "0.8.6",
+  "version": "0.8.7",
   "private": true,
   "description": "Socle commun des connecteurs MCP — AUTHENTIFICATION et le transport MCP qui la porte. Dépendance de DÉVELOPPEMENT, empaquetée au déploiement : jamais une dépendance d'exécution (S2).",
   "license": "Apache-2.0",
@@ -8,11 +8,13 @@
   "exports": {
     ".": "./src/index.ts",
     "./protocole/*": "./src/protocole/*.ts",
-    "./identite/*": "./src/identite/*.ts"
+    "./identite/*": "./src/identite/*.ts",
+    "./verifier-audit": "./scripts/verifier-audit.mjs"
   },
   "types": "./src/index.ts",
   "files": [
     "src",
+    "scripts/verifier-audit.mjs",
     "LICENSE",
     "NOTICE",
     "README.md"

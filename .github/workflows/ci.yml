@@ -1,6 +1,5 @@
 name: ci
 
-# Contrôles sans réseau ni secret : type-check, mise en forme, tests (workerd) et audit npm.
 on:
   push:
     branches: [main]

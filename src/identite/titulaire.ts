@@ -1,18 +1,3 @@
-/**
- * Identité multilocataire : résolution de jetons opaques par empreinte SHA-256, contrôle de
- * portée (`les_deux` ou par connecteur) et coexistence transitoire avec les secrets partagés.
- *
- * Invariants appliqués :
- * - **Fermé par défaut (`G21`)** : ni l'absence de base, ni une table vide, ni une liste de
- *   secrets vide, ni une exception D1 n'ouvre l'accès.
- * - **Zéro oracle d'état (`G7`)** : jeton inconnu, expiré, révoqué, portée étrangère ou
- *   titulaire non servi (`en_attente`, `suspendu`, `revoque`, `refuse`) produisent tous `null`
- *   sans requête conditionnelle secondaire.
- * - **Aucun porteur n'en masque un autre** : jusqu'à `MAX_CANDIDATS_JETON` candidats frappés
- *   distincts sont éprouvés afin qu'un en-tête résiduel périmé n'annule pas un `?key=` valide.
- * - **Horodatage `vu_le` au jour UTC** : mis à jour au plus une fois par jour et par jeton.
- */
-
 import {
   empreinte,
   estCheminMontageAdmissible,
@@ -24,7 +9,6 @@ import {
   trouverPorteurApparie,
 } from "./porteur";
 
-/** États administratifs possibles d'un titulaire dans la base d'identité partagée. */
 export const ETATS_TITULAIRE = [
   "en_attente",
   "actif",
@@ -37,29 +21,20 @@ export const ETATS_TITULAIRE = [
 
 export type EtatTitulaire = (typeof ETATS_TITULAIRE)[number];
 
-/** Seuls ces trois états autorisent le service des appels authentifiés (§4.3 marche 7). */
 export const ETATS_TITULAIRE_SERVIS = ["actif", "surveille", "limite"] as const;
 
 export type EtatTitulaireServi = (typeof ETATS_TITULAIRE_SERVIS)[number];
 
-/** Portée par défaut ouvrant l'ensemble des connecteurs authentifiés de la plateforme. */
 export const PORTEE_UNIVERSELLE = "les_deux";
 
-/** Nombre maximal de candidats de jeton frappés interrogés par requête HTTP. */
 export const MAX_CANDIDATS_JETON = 4;
 
 const JETON_FACTICE_TEMPS_CONSTANT = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
-/** Indique si l'état du titulaire autorise l'exécution de requêtes MCP. */
 export function estEtatServi(etat: unknown): etat is EtatTitulaireServi {
   return etat === "actif" || etat === "surveille" || etat === "limite";
 }
 
-/**
- * Vérifie que la portée enregistrée sur le jeton couvre le connecteur courant.
- *
- * Fermé par défaut : une portée vide, absente ou restreinte à un autre connecteur est refusée.
- */
 export function porteeAutorisee(porteeJeton: unknown, serviceAttendu?: string): boolean {
   if (typeof porteeJeton !== "string") return false;
   const jetonsPortee = porteeJeton
@@ -72,7 +47,6 @@ export function porteeAutorisee(porteeJeton: unknown, serviceAttendu?: string): 
   return jetonsPortee.includes(serviceAttendu.trim());
 }
 
-/** Ligne brute renvoyée par la jointure indexée `jeton` × `titulaire`. */
 export interface EnregistrementJetonTitulaire {
   readonly jeton_id: string;
   readonly titulaire_id: string;
@@ -84,13 +58,11 @@ export interface EnregistrementJetonTitulaire {
   readonly vu_le: string | null;
 }
 
-/** Abstraction minimale du dépôt de jetons permettant les tests hors ligne sans réseau. */
 export interface DepotJetons {
   trouverParEmpreinte(empreinteHex: string): Promise<EnregistrementJetonTitulaire | null>;
   marquerVuLe?(jetonId: string, jourUtc: string): Promise<void>;
 }
 
-/** Interface structurelle minimale compatible avec `D1Database` de Cloudflare Workers. */
 export interface BaseD1Minimale {
   prepare(requeteSql: string): {
     bind(...valeurs: unknown[]): {
@@ -123,7 +95,6 @@ SET vu_le = ?2
 WHERE id = ?1 AND (vu_le IS NULL OR vu_le <> ?2)
 `.trim();
 
-/** Fabrique un `DepotJetons` adossé à la base D1 partagée `DB_IDENTITE`. */
 export function creerDepotJetonsD1(db: BaseD1Minimale): DepotJetons {
   return {
     async trouverParEmpreinte(empreinteHex: string): Promise<EnregistrementJetonTitulaire | null> {
@@ -138,7 +109,6 @@ export function creerDepotJetonsD1(db: BaseD1Minimale): DepotJetons {
   };
 }
 
-/** Titulaire actif résolu à partir d'un jeton individuel vérifié. */
 export interface TitulaireResolu {
   readonly titulaireId: string;
   readonly jetonId: string;
@@ -148,7 +118,6 @@ export interface TitulaireResolu {
   readonly vuLe: string | null;
 }
 
-/** Identité authentifiée attachée à une requête MCP acceptée. */
 export type Principal =
   | {
       readonly type: "titulaire";
@@ -163,20 +132,13 @@ export type Principal =
     };
 
 export interface OptionsResolutionJeton {
-  /** Identifiant du service hôte pour valider `jeton.portee` (outre `les_deux`). */
   service?: string;
-  /** Horloge injectable pour tests déterministes d'expiration et de `vu_le`. */
   horloge?: () => Date;
-  /** File d'arrière-plan (`ctx.waitUntil`) pour différer l'écriture quotidienne de `vu_le`. */
   planifierArrierePlan?: (tache: Promise<unknown>) => void;
-  /**
-   * Rappel optionnel recevant l'empreinte SHA-256 hexadécimale d'un jeton validé afin d'alimenter
-   * le laissez-passer pré-authentification des IP infonuagiques partagées (`S15`).
-   */
   surEmpreinteValide?: (empreinteHex: string) => void;
 }
 
-function formaterJourUtc(d: Date): string {
+export function jourUtc(d = new Date()): string {
   return d.toISOString().slice(0, 10);
 }
 
@@ -197,14 +159,6 @@ function dateCalendaireValide(annee: number, mois: number, jour: number): boolea
   );
 }
 
-/**
- * Convertit un horodatage stocké (`RFC 3339` avec ou sans millisecondes, `SQLite UTC`
- * `AAAA-MM-JJ HH:MM:SS` ou jour `AAAA-MM-JJ`) en époque millisecondes UTC.
- *
- * Valide explicitement les composantes calendaires, horaires et de décalage horaire avant toute
- * conversion UTC et rend `null` sur toute chaîne mal formée ou date calendaire inexistante afin
- * que le contrôle d'expiration échoue systématiquement fermé.
- */
 export function horodatageUtcMs(brut: string): number | null {
   if (typeof brut !== "string" || brut.length === 0 || brut !== brut.trim()) return null;
 
@@ -262,14 +216,6 @@ export function horodatageUtcMs(brut: string): number | null {
   return Number.isFinite(ms) ? ms : null;
 }
 
-/**
- * Résout une liste de porteurs candidats contre le dépôt D1 des jetons individuels.
- *
- * Effectue systématiquement au moins un condensé SHA-256 même lorsqu'aucun candidat n'a la
- * forme d'un jeton frappé ou que le dépôt est absent, résout l'intégralité des candidats retenus
- * sans court-circuit (`Promise.all`), et évalue révocation, expiration numérique, état et portée
- * sur l'unique ligne lue sans requête secondaire discriminante (`G7`, `G21`).
- */
 export async function resoudreJeton(
   depot: DepotJetons | undefined,
   candidats: readonly string[],
@@ -283,7 +229,7 @@ export async function resoudreJeton(
 
   const maintenant = (options.horloge ?? (() => new Date()))();
   const maintenantMs = maintenant.getTime();
-  const jourIso = formaterJourUtc(maintenant);
+  const jourIso = jourUtc(maintenant);
 
   let erreurLecture = false;
   const evaluations = await Promise.all(
@@ -320,7 +266,6 @@ export async function resoudreJeton(
     }),
   );
 
-  // Fermé par défaut sur toute erreur D1, sans journaliser le candidat ni l'empreinte.
   if (erreurLecture) return null;
 
   const gagnant = evaluations.find((e) => e !== null);
@@ -350,7 +295,6 @@ function candidatosFrappesUniques(candidats: readonly string[]): string[] {
 }
 
 export interface OptionsOuverturePrincipal extends OptionsResolutionJeton {
-  /** Dépôt D1 des jetons par titulaire (`DB_IDENTITE`). */
   depot?: DepotJetons;
 }
 
@@ -359,13 +303,6 @@ export interface ResultatOuverturePrincipal {
   readonly principal: Principal;
 }
 
-/**
- * Authentifie une requête entrante par jeton individuel D1 (`titulaire`) et, si la `Porte`
- * déclare encore des `nomsSecrets` actifs (bascule graduée ou veille CI), en coexistence avec
- * les secrets partagés d'instance.
- *
- * Rend `null` dès qu'aucun mécanisme configuré n'authentifie la requête (fermé par défaut).
- */
 export async function ouvrirPrincipal(
   request: Request,
   url: URL,

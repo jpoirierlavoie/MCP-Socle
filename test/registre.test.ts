@@ -9,7 +9,6 @@ import {
 } from "../src/protocole/registre";
 import { ok } from "../src/protocole/rpc";
 
-/** Contexte factice : le socle ne sait pas ce qu'un dépôt y met, et c'est le point. */
 interface CtxFactice {
   db: string;
   client: { appeler: () => void };
@@ -44,9 +43,6 @@ describe("listToolDescriptors", () => {
   });
 
   it("l'ORDRE DES CLEFS est un contrat — tools/list doit rester octet pour octet", () => {
-    // `JSON.stringify` suit l'ordre d'insertion. Réordonner ces cinq champs changerait la
-    // charge utile sans changer sa valeur, ce qui invaliderait le critère de la marche 1
-    // et le cache d'invite des clients.
     const json = JSON.stringify(listToolDescriptors(registre)[0]);
     expect(json.indexOf('"name"')).toBeLessThan(json.indexOf('"title"'));
     expect(json.indexOf('"title"')).toBeLessThan(json.indexOf('"description"'));
@@ -55,8 +51,6 @@ describe("listToolDescriptors", () => {
   });
 
   it("conserve l'ordre d'INSERTION, et ne trie pas par nom", () => {
-    // Le tri alphabétique arrive à la marche 3, sur un champ `ordre` : trier ici
-    // rétrograderait l'outil pivot que les INSTRUCTIONS désignent comme point de départ.
     expect(listToolDescriptors(registre).map((d) => d.name)).toEqual(["zebre", "alpha"]);
   });
 
