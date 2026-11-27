@@ -1,6 +1,6 @@
 import { repondreDocumentJsonPublic } from "../protocole/http";
 import { encoderBase64Url, memeSecret, sansBarresFinales } from "./porteur";
-import { PORTEE_UNIVERSELLE } from "./titulaire";
+import { PORTEE_UNIVERSELLE, PORTEE_UNIVERSELLE_HERITEE } from "./titulaire";
 
 export const CHEMIN_RESSOURCE_PROTEGEE = "/.well-known/oauth-protected-resource";
 export const CHEMIN_SERVEUR_AUTORISATION = "/.well-known/oauth-authorization-server";
@@ -703,6 +703,11 @@ export function validerMetadonneesInscriptionDcr(
 export const MAX_SERVICES_PORTEE = 8;
 export const MOTIF_SERVICE_PORTEE = /^[a-z0-9_-]{2,40}$/;
 
+export interface OptionsPorteesCanoniques {
+  readonly inclureHeritee?: boolean;
+  readonly porteeUniverselle?: string;
+}
+
 function extraireServicesTriesValides(servicesConnus: readonly string[]): string[] {
   const uniques = new Set<string>();
   for (const brut of servicesConnus) {
@@ -710,7 +715,11 @@ function extraireServicesTriesValides(servicesConnus: readonly string[]): string
       throw new Error("Nom de portée de service non textuel.");
     }
     const propre = brut.trim();
-    if (!MOTIF_SERVICE_PORTEE.test(propre) || propre === PORTEE_UNIVERSELLE) {
+    if (
+      !MOTIF_SERVICE_PORTEE.test(propre) ||
+      propre === PORTEE_UNIVERSELLE ||
+      propre === PORTEE_UNIVERSELLE_HERITEE
+    ) {
       throw new Error(`Nom de portée de service invalide : « ${brut} ».`);
     }
     uniques.add(propre);
@@ -723,10 +732,16 @@ function extraireServicesTriesValides(servicesConnus: readonly string[]): string
   return [...uniques].sort();
 }
 
-export function porteesCanoniques(servicesConnus: readonly string[]): string[] {
+export function porteesCanoniques(
+  servicesConnus: readonly string[],
+  options?: OptionsPorteesCanoniques,
+): string[] {
   const services = extraireServicesTriesValides(servicesConnus);
+  const porteeUniv = options?.porteeUniverselle ?? PORTEE_UNIVERSELLE;
+  const inclureHeritee = options?.inclureHeritee ?? porteeUniv !== PORTEE_UNIVERSELLE_HERITEE;
+  const prefixe = inclureHeritee ? [porteeUniv, PORTEE_UNIVERSELLE_HERITEE] : [porteeUniv];
   if (services.length === 1) {
-    return [PORTEE_UNIVERSELLE, services[0]!];
+    return [...prefixe, services[0]!];
   }
 
   const sousEnsemblesParTaille: string[][] = Array.from({ length: services.length - 1 }, () => []);
@@ -744,7 +759,7 @@ export function porteesCanoniques(servicesConnus: readonly string[]): string[] {
   }
 
   parcourir(0, []);
-  return [PORTEE_UNIVERSELLE, ...sousEnsemblesParTaille.flat()];
+  return [...prefixe, ...sousEnsemblesParTaille.flat()];
 }
 
 export function normaliserPorteeOAuth(
@@ -778,12 +793,20 @@ export function normaliserPorteeOAuth(
   if (demandes.length === 0) return PORTEE_UNIVERSELLE;
 
   for (const jeton of demandes) {
-    if (jeton !== PORTEE_UNIVERSELLE && !services.includes(jeton)) {
+    if (
+      jeton !== PORTEE_UNIVERSELLE &&
+      jeton !== PORTEE_UNIVERSELLE_HERITEE &&
+      !services.includes(jeton)
+    ) {
       return null;
     }
   }
 
-  if (demandes.includes(PORTEE_UNIVERSELLE) || services.every((srv) => demandes.includes(srv))) {
+  if (
+    demandes.includes(PORTEE_UNIVERSELLE) ||
+    demandes.includes(PORTEE_UNIVERSELLE_HERITEE) ||
+    services.every((srv) => demandes.includes(srv))
+  ) {
     return PORTEE_UNIVERSELLE;
   }
 

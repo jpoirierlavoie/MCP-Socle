@@ -23,6 +23,7 @@ import {
   MAX_CANDIDATS_JETON,
   ouvrirPrincipal,
   PORTEE_UNIVERSELLE,
+  PORTEE_UNIVERSELLE_HERITEE,
   porteeAutorisee,
   resoudreJeton,
 } from "../src/identite/titulaire";
@@ -101,10 +102,16 @@ describe("estEtatServi et porteeAutorisee", () => {
     }
   });
 
-  it("accepte les_deux partout et cloisonne les portées dédiées par service", () => {
+  it("accepte tous et les_deux partout et cloisonne les portées dédiées par service", () => {
+    expect(PORTEE_UNIVERSELLE).toBe("tous");
+    expect(PORTEE_UNIVERSELLE_HERITEE).toBe("les_deux");
     expect(porteeAutorisee(PORTEE_UNIVERSELLE, "service_a")).toBe(true);
     expect(porteeAutorisee(PORTEE_UNIVERSELLE, "service_b")).toBe(true);
+    expect(porteeAutorisee(PORTEE_UNIVERSELLE, "service_c")).toBe(true);
     expect(porteeAutorisee(PORTEE_UNIVERSELLE)).toBe(true);
+    expect(porteeAutorisee(PORTEE_UNIVERSELLE_HERITEE, "service_a")).toBe(true);
+    expect(porteeAutorisee(PORTEE_UNIVERSELLE_HERITEE, "service_c")).toBe(true);
+    expect(porteeAutorisee(PORTEE_UNIVERSELLE_HERITEE)).toBe(true);
 
     expect(porteeAutorisee("service_a", "service_a")).toBe(true);
     expect(porteeAutorisee("service_a", "service_b")).toBe(false);

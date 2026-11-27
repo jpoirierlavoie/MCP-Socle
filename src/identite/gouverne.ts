@@ -4,7 +4,12 @@ import { err, type ToolResult } from "../protocole/rpc";
 import { porteesCanoniques } from "./oauth";
 import { empreinte, MAX_LONGUEUR_PORTEUR } from "./porteur";
 import { tropDeRequetes } from "./refus";
-import { type BaseD1Minimale, type EtatTitulaireServi, jourUtc } from "./titulaire";
+import {
+  type BaseD1Minimale,
+  type EtatTitulaireServi,
+  jourUtc,
+  PORTEE_UNIVERSELLE,
+} from "./titulaire";
 
 export const MODES_ADMISSION = ["ferme", "invitation", "ouvert"] as const;
 
@@ -26,13 +31,13 @@ export type ClasseOutil = (typeof CLASSES_OUTIL)[number];
 export type PlafondsQuotas = Readonly<Record<ClasseOutil, number>>;
 
 export const QUOTAS_ACTIF_PAR_DEFAUT: PlafondsQuotas = {
-  local: 1_500,
+  local: 3_000,
   sortant: 200,
   semantique: 150,
 } as const;
 
 export const QUOTAS_LIMITE_PAR_DEFAUT: PlafondsQuotas = {
-  local: 150,
+  local: 300,
   sortant: 20,
   semantique: 15,
 } as const;
@@ -686,10 +691,20 @@ const CHECK_MINUTE_CANONIQUE = (col: string) =>
 const CHECK_ISO_MS_CANONIQUE = (col: string) =>
   `length(${col}) = 24 AND substr(${col}, 1, 10) GLOB '[0-9][0-9][0-9][0-9]-[0-1][0-9]-[0-3][0-9]' AND substr(${col}, 11, 9) GLOB 'T[0-2][0-9]:[0-5][0-9]:[0-5][0-9]' AND substr(${col}, 20, 5) GLOB '.[0-9][0-9][0-9]Z'`;
 
+export interface OptionsSchemaIdentiteD1 {
+  readonly porteeDefaut?: string;
+  readonly inclureHeritee?: boolean;
+}
+
 export function construireSchemaIdentiteD1(
   porteesServices: readonly string[] = ["service_a", "service_b"],
+  options?: OptionsSchemaIdentiteD1,
 ): string {
-  const listePorteesSql = porteesCanoniques(porteesServices)
+  const porteeDefaut = options?.porteeDefaut ?? PORTEE_UNIVERSELLE;
+  const listePorteesSql = porteesCanoniques(porteesServices, {
+    porteeUniverselle: porteeDefaut,
+    inclureHeritee: options?.inclureHeritee,
+  })
     .map((p) => `'${p}'`)
     .join(",");
 
@@ -761,7 +776,7 @@ CREATE TABLE jeton (
   empreinte     TEXT NOT NULL UNIQUE,
   queue         TEXT NOT NULL,
   libelle       TEXT NOT NULL,
-  portee        TEXT NOT NULL DEFAULT 'les_deux'
+  portee        TEXT NOT NULL DEFAULT '${porteeDefaut}'
                 CHECK (portee IN (${listePorteesSql})),
   emis_le       TEXT NOT NULL,
   expire_le     TEXT,
@@ -806,7 +821,7 @@ CREATE TABLE client_oauth (
   libelle               TEXT NOT NULL,
   empreinte_secret      TEXT,
   uris_redirection_json TEXT NOT NULL,
-  portees_permises      TEXT NOT NULL DEFAULT 'les_deux',
+  portees_permises      TEXT NOT NULL DEFAULT '${porteeDefaut}',
   actif                 INTEGER NOT NULL DEFAULT 1 CHECK (actif IN (0, 1)),
   cree_le               TEXT NOT NULL
 );

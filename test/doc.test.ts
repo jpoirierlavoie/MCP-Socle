@@ -20,7 +20,7 @@ function sansCommentaires(code: string): string {
 }
 
 describe("hygiène documentaire et manifeste", () => {
-  it("package.json déclare le nom @poirierlavoie/mcp-socle, la version 0.8.7 et zéro dépendance d'exécution", () => {
+  it("package.json déclare le nom @poirierlavoie/mcp-socle, la version 0.8.8 et zéro dépendance d'exécution", () => {
     const pkg = JSON.parse(pkgRaw) as {
       name: string;
       version: string;
@@ -31,7 +31,7 @@ describe("hygiène documentaire et manifeste", () => {
       scripts?: Record<string, string>;
     };
     expect(pkg.name).toBe("@poirierlavoie/mcp-socle");
-    expect(pkg.version).toBe("0.8.7");
+    expect(pkg.version).toBe("0.8.8");
     expect(pkg.license).toBe("Apache-2.0");
     expect(Object.keys(pkg.dependencies ?? {})).toEqual([]);
     expect(pkg.exports?.["./verifier-audit"]).toBe("./scripts/verifier-audit.mjs");
@@ -75,11 +75,12 @@ describe("hygiène documentaire et manifeste", () => {
       expect(doc).not.toContain("MCP-Socle-Juridique");
       expect(doc).not.toContain("socle-juridique");
       expect(doc).not.toContain("pratique-civile-outils");
+      expect(doc).not.toContain("#v0.8.7");
       expect(doc).not.toContain("#v0.8.6");
     }
-    expect(readmeMd).toContain("#v0.8.7");
-    expect(claudeMd).toContain("#v0.8.7");
-    expect(securityMd).toContain("#v0.8.7");
+    expect(readmeMd).toContain("#v0.8.8");
+    expect(claudeMd).toContain("#v0.8.8");
+    expect(securityMd).toContain("#v0.8.8");
     expect(readmeMd).not.toContain("#v0.1.0");
     expect(readmeMd).not.toContain("#v0.6.1");
     expect(readmeMd).not.toContain("#v0.6.2");
