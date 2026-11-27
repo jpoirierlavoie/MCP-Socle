@@ -25,7 +25,8 @@ export const ETATS_TITULAIRE_SERVIS = ["actif", "surveille", "limite"] as const;
 
 export type EtatTitulaireServi = (typeof ETATS_TITULAIRE_SERVIS)[number];
 
-export const PORTEE_UNIVERSELLE = "les_deux";
+export const PORTEE_UNIVERSELLE = "tous";
+export const PORTEE_UNIVERSELLE_HERITEE = "les_deux";
 
 export const MAX_CANDIDATS_JETON = 4;
 
@@ -42,7 +43,12 @@ export function porteeAutorisee(porteeJeton: unknown, serviceAttendu?: string): 
     .split(/[\s,]+/)
     .filter((s) => s.length > 0);
   if (jetonsPortee.length === 0) return false;
-  if (jetonsPortee.includes(PORTEE_UNIVERSELLE)) return true;
+  if (
+    jetonsPortee.includes(PORTEE_UNIVERSELLE) ||
+    jetonsPortee.includes(PORTEE_UNIVERSELLE_HERITEE)
+  ) {
+    return true;
+  }
   if (!serviceAttendu || serviceAttendu.trim().length === 0) return false;
   return jetonsPortee.includes(serviceAttendu.trim());
 }

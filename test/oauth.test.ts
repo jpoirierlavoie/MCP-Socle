@@ -351,13 +351,15 @@ describe("G36 — Validation des redirect_uri, CIMD anti-SSRF et normalisation d
     ).toBe(false);
 
     const services = ["service_a", "service_b"];
-    expect(normaliserPorteeOAuth(undefined, services)).toBe("les_deux");
-    expect(normaliserPorteeOAuth("", services)).toBe("les_deux");
-    expect(normaliserPorteeOAuth("les_deux", services)).toBe("les_deux");
-    expect(normaliserPorteeOAuth("service_b service_a", services)).toBe("les_deux");
+    expect(normaliserPorteeOAuth(undefined, services)).toBe("tous");
+    expect(normaliserPorteeOAuth("", services)).toBe("tous");
+    expect(normaliserPorteeOAuth("tous", services)).toBe("tous");
+    expect(normaliserPorteeOAuth("les_deux", services)).toBe("tous");
+    expect(normaliserPorteeOAuth("service_b service_a", services)).toBe("tous");
     expect(normaliserPorteeOAuth("service_a", services)).toBe("service_a");
     expect(normaliserPorteeOAuth("service_a portee_inconnue", services)).toBeNull();
     expect(normaliserPorteeOAuth("service_a", [])).toBeNull();
+    expect(normaliserPorteeOAuth("service_a", ["tous"])).toBeNull();
     expect(normaliserPorteeOAuth("service_a", ["les_deux"])).toBeNull();
     expect(normaliserPorteeOAuth("service_a ".repeat(60), services)).toBeNull();
     expect(
@@ -371,6 +373,7 @@ describe("G36 — Validation des redirect_uri, CIMD anti-SSRF et normalisation d
   it("maintient une cohérence stricte entre normaliserPorteeOAuth et CHECK (portee IN (...)) sur D1 pour 3+ services", async () => {
     const troisServices = ["service_c", "service_a", "service_b"];
     expect(porteesCanoniques(troisServices)).toEqual([
+      "tous",
       "les_deux",
       "service_a",
       "service_b",
@@ -382,7 +385,7 @@ describe("G36 — Validation des redirect_uri, CIMD anti-SSRF et normalisation d
 
     expect(normaliserPorteeOAuth("service_b service_a", troisServices)).toBe("service_a service_b");
     expect(normaliserPorteeOAuth("service_c service_a", troisServices)).toBe("service_a service_c");
-    expect(normaliserPorteeOAuth("service_c service_b service_a", troisServices)).toBe("les_deux");
+    expect(normaliserPorteeOAuth("service_c service_b service_a", troisServices)).toBe("tous");
 
     const db = env.DB_IDENTITE_TEST;
     const instructions = construireSchemaIdentiteD1(troisServices)

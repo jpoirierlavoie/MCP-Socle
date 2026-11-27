@@ -12,7 +12,20 @@ export async function memeSecret(presente: string, attendu: string): Promise<boo
     crypto.subtle.digest("SHA-256", enc.encode(presente)),
     crypto.subtle.digest("SHA-256", enc.encode(attendu)),
   ]);
-  return crypto.subtle.timingSafeEqual(a, b);
+  const subtle = crypto.subtle as SubtleCrypto & {
+    timingSafeEqual?: (a: BufferSource, b: BufferSource) => boolean;
+  };
+  if (typeof subtle.timingSafeEqual === "function") {
+    return subtle.timingSafeEqual(a, b);
+  }
+  const va = new Uint8Array(a);
+  const vb = new Uint8Array(b);
+  if (va.byteLength !== vb.byteLength) return false;
+  let diff = 0;
+  for (let i = 0; i < va.byteLength; i++) {
+    diff |= va[i]! ^ vb[i]!;
+  }
+  return diff === 0;
 }
 
 export function decodeOrNull(segment: string): string | null {

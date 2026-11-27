@@ -250,8 +250,8 @@ describe("G32 & S15 — Débit d'arête : blocage brute-force vs rafales Deep Re
 
 describe("Quotas journaliers par classe d'outil", () => {
   it("autorise sous le plafond et rend QUOTA_EPUISE (HTTP 200 isError: true) dès le plafond atteint", () => {
-    expect(QUOTAS_ACTIF_PAR_DEFAUT).toEqual({ local: 1_500, sortant: 200, semantique: 150 });
-    expect(QUOTAS_LIMITE_PAR_DEFAUT).toEqual({ local: 150, sortant: 20, semantique: 15 });
+    expect(QUOTAS_ACTIF_PAR_DEFAUT).toEqual({ local: 3_000, sortant: 200, semantique: 150 });
+    expect(QUOTAS_LIMITE_PAR_DEFAUT).toEqual({ local: 300, sortant: 20, semantique: 15 });
 
     const ok = verifierQuotaJour({ sortant: 199 }, "sortant", "actif");
     expect(ok).toEqual({
@@ -396,6 +396,13 @@ describe("G13, G18, G25 & modes d'admission — Garde statique du schéma SQL et
     const schemaPersonnalise = construireSchemaIdentiteD1(["connecteur_un", "connecteur_deux"]);
     expect(verifierSchemaSansContenuIdentifiant(schemaPersonnalise)).toEqual([]);
     expect(verifierCouvertureRetentionSchema(schemaPersonnalise)).toEqual([]);
+    expect(schemaPersonnalise).toContain("DEFAULT 'tous'");
+    const schemaHerite = construireSchemaIdentiteD1(["service_b", "service_a"], {
+      porteeDefaut: "les_deux",
+      inclureHeritee: false,
+    });
+    expect(schemaHerite).toContain("DEFAULT 'les_deux'");
+    expect(schemaHerite).toContain("CHECK (portee IN ('les_deux','service_a','service_b'))");
     expect(() => construireSchemaIdentiteD1(["MAUVAIS NOM!"])).toThrow();
 
     const sqlTableSansRetention = `${SQL_SCHEMA_IDENTITE_D1}\nCREATE TABLE table_oubliee (id TEXT PRIMARY KEY);`;
