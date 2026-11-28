@@ -159,13 +159,7 @@ describe("G36 — Validation des redirect_uri, CIMD anti-SSRF et normalisation d
       "https://vertexaisearch.cloud.google.com/oauth-redirect",
       "https://antigravity.google/oauth-callback",
       "https://antigravity.google.com/oauth/callback",
-      "https://chatgpt.com/connector_platform_oauth_redirect",
     ];
-    expect(
-      estUriRedirectionAutorisee("https://chatgpt.com/connector_platform_oauth_redirect", {
-        urisExactesAutorisees: urisAutorisees,
-      }),
-    ).toBe(true);
 
     expect(
       estUriRedirectionAutorisee("https://claude.ai/api/mcp/auth_callback", {
@@ -296,28 +290,28 @@ describe("G36 — Validation des redirect_uri, CIMD anti-SSRF et normalisation d
       },
     });
 
-    const sep3149 = validerMetadonneesClientCimd("https://chatgpt.com/oauth/client.json", {
-      client_id: "https://chatgpt.com/oauth/client.json",
-      client_name: "ChatGPT",
-      redirect_uris: ["https://chatgpt.com/connector_platform_oauth_redirect"],
+    const sep3149 = validerMetadonneesClientCimd("https://claude.ai/oauth/client.json", {
+      client_id: "https://claude.ai/oauth/client.json",
+      client_name: "Claude",
+      redirect_uris: ["https://claude.ai/api/mcp/auth_callback"],
       token_endpoint_auth_method: "private_key_jwt",
       token_endpoint_auth_methods_supported: ["none", "private_key_jwt"],
     });
     expect(sep3149).toEqual({
       ok: true,
       client: {
-        clientId: "https://chatgpt.com/oauth/client.json",
-        clientName: "ChatGPT",
-        redirectUris: ["https://chatgpt.com/connector_platform_oauth_redirect"],
+        clientId: "https://claude.ai/oauth/client.json",
+        clientName: "Claude",
+        redirectUris: ["https://claude.ai/api/mcp/auth_callback"],
         tokenEndpointAuthMethod: "private_key_jwt",
         tokenEndpointAuthMethodsSupported: ["none", "private_key_jwt"],
       },
     });
 
     expect(
-      validerMetadonneesClientCimd("https://chatgpt.com/oauth/client.json", {
-        client_id: "https://chatgpt.com/oauth/client.json",
-        redirect_uris: ["https://chatgpt.com/connector_platform_oauth_redirect"],
+      validerMetadonneesClientCimd("https://claude.ai/oauth/client.json", {
+        client_id: "https://claude.ai/oauth/client.json",
+        redirect_uris: ["https://claude.ai/api/mcp/auth_callback"],
         token_endpoint_auth_method: "private_key_jwt",
         token_endpoint_auth_methods_supported: ["client_secret_post"],
       }).ok,

@@ -8,9 +8,6 @@ export const ORIGINES_PAR_DEFAUT = [
   "https://claude.com",
   "https://gemini.google.com",
   "https://aistudio.google.com",
-  "https://chatgpt.com",
-  "https://chat.openai.com",
-  "https://platform.openai.com",
 ] as const;
 
 export function originesAdmises(supplementaires?: string): string[] {
